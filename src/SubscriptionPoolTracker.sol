@@ -80,7 +80,7 @@ abstract contract SubscriptionPoolTracker is ISubscriptionPoolTrackerErrors {
     uint256 amount,
     uint256 currentPrice
   ) internal view returns (uint256, uint256) {
-    SubscriptionPoolCheckpoint checkpoint = _subscriptionCheckpoints[owner];
+    SubscriptionPoolCheckpoint memory checkpoint = _subscriptionCheckpoints[owner];
     uint256 feesToCollect = _calculateFees(
       currentPrice,
       checkpoint.lastModifiedAt,
@@ -108,14 +108,14 @@ abstract contract SubscriptionPoolTracker is ISubscriptionPoolTrackerErrors {
     uint256 startTime = lastModifiedAt;
     // iterate through all fee changes that have happened since the last checkpoint
     for (uint256 i = 0; i < paramChanges.length; i++) {
-      ParamChange pc = paramChanges[i];
+      ParamChange memory pc = paramChanges[i];
 
       if (pc.timestamp > startTime) {
         uint256 intervalFee = numOfNfts *
           SafUtils._calculateSafBetweenTimes(
             pc.priceAtTime,
             startTime,
-            ParamChange,
+            pc.timestamp,
             pc.rateAtTime
           );
         totalFee += intervalFee;
@@ -149,70 +149,3 @@ abstract contract SubscriptionPoolTracker is ISubscriptionPoolTrackerErrors {
     cp.subscriptionPoolRemaining = newSubPool;
     cp.lastModifiedAt = block.timestamp; 
   }
-
-  // ---------- below methods havent been converted
-
-  // TODO fix this
-  function _updateSubscriptionPool(
-    address owner,
-    int256 subscriptionPoolDelta,
-    int256 statedPriceDelta
-  )
-    internal
-    returns (
-      uint256 feesToCollect,
-      uint256 newStatedPrice,
-      uint256 newSubscriptionPool
-    )
-  {
-    SubscriptionPoolCheckpoint storage cp = _subscriptionCheckpoints[tokenId];
-    uint256 subscriptionPoolRemaining;
-    (
-      subscriptionPoolRemaining,
-      feesToCollect,
-
-    ) = _getSubscriptionPoolRemaining(owner, amount, currentPrice);
-
-    //  apply deltas to existing pool / price
-    int256 subPool = int256(subscriptionPoolRemaining) + subscriptionPoolDelta;
-    int256 statedPrice = int256(checkpoint.statedPrice) + statedPriceDelta;
-    if (statedPrice < 0) revert InvalidAlterPriceValue();
-    if (subPool < 0) revert InvalidAlterSubscriptionPoolValue();
-
-    newStatedPrice = uint256(statedPrice);
-    newSubscriptionPool = uint256(subPool);
-    _persistNewSubscriptionPoolInfo(
-      tokenId,
-      newStatedPrice,
-      newSubscriptionPool,
-      0
-    );
-  }
-
-  function _persistNewSubscriptionPoolInfo(
-    uint256 tokenId,
-    uint256 newStatedPrice,
-    uint256 newSubscriptionPoolAmount,
-    uint256 newLiquidationStartedAt
-  ) internal {
-    if (newSubscriptionPoolAmount < (newStatedPrice * minimumPoolRatio) / 10000)
-      revert InsufficientSubscriptionPool();
-
-    SubscriptionPoolCheckpoint storage checkpoint = _subscriptionCheckpoints[
-      tokenId
-    ];
-
-    if (checkpoint.statedPrice != newStatedPrice) {
-      checkpoint.statedPrice = newStatedPrice;
-    }
-
-    if (checkpoint.subscriptionPoolRemaining != newSubscriptionPoolAmount) {
-      checkpoint.subscriptionPoolRemaining = newSubscriptionPoolAmount;
-    }
-
-    if (checkpoint.liquidationStartedAt != newLiquidationStartedAt) {
-      checkpoint.liquidationStartedAt = newLiquidationStartedAt;
-    }
-    checkpoint.lastModifiedAt = block.timestamp;
-  }
-}

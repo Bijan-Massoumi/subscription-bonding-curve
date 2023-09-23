@@ -89,6 +89,11 @@ abstract contract SubscriptionKeys is SubscriptionPoolTracker {
     return subPoolRemaining;
   }
 
+  function getCurrentPrice() public view returns (uint256) {
+    return getPrice(supply, 1);
+  }
+
+
   // TODO is there a way to liquidate people before we buy to ensure the best price?
   function buyShares(uint256 amount) public payable {
     require(
@@ -102,15 +107,20 @@ abstract contract SubscriptionKeys is SubscriptionPoolTracker {
     // is the trader paying enought to cover minimum pool requirements?
     uint256 subPoolDelta = msg.value - price;
     uint256 traderPoolRemaining;
-    (traderPoolRemaining, ) = _getSubscriptionPoolRemaining(msg.sender, _balances[msg.sender], getPrice(supply, 1));
+    uint256 fees;
+    (traderPoolRemaining,fees ) = _getSubscriptionPoolRemaining(msg.sender, _balances[msg.sender], getCurrentPrice());
     uint256 newSubscriptionPool = (subPoolDelta + traderPoolRemaining);
     require(newSubscriptionPool > SubPoolMinimum, "Insufficient payment");
 
-    // purchase tokens
+    // reap fees for creator
+    creatorFees += fees;
+    
+    // purchase tokens -------
+    // save a timestamp of the currentParams for retroactive fee calculation
+    _updatePriceParam(getCurrentPrice());
     _balances[msg.sender] = _balances[msg.sender] + amount;
     supply = supply + amount;
     // tokens have been bought, params have changed
-    _updatePriceParam(price);
     _updateCheckpoint(msg.sender, newSubscriptionPool);
 
     //TODO: emit new subscription Pool
@@ -131,12 +141,17 @@ abstract contract SubscriptionKeys is SubscriptionPoolTracker {
     _balances[msg.sender] >= amount,
       "Insufficient shares"
     );
+
+    uint256 traderPoolRemaining;
+    uint256 fees;
+    (traderPoolRemaining, fees ) = _getSubscriptionPoolRemaining(msg.sender, _balances[msg.sender], getCurrentPrice());
     _balances[msg.sender] =
       _balances[msg.sender] -
       amount;
     supply = supply - amount;
-
-    //TODO update their checkpoint now that we're changing their annual rate
+    _updateCheckpoint(msg.sender, traderPoolRemaining);
+    // reap fees for creator
+    creatorFees += fees;
 
     //TODO: emit the minimum bond requirment
     emit Trade(
@@ -150,8 +165,6 @@ abstract contract SubscriptionKeys is SubscriptionPoolTracker {
   }
 
   // External functions ------------------------------------------------------
-
-
   function increaseSubscriptionPool(
     uint256 tokenId,
     uint256 amount
