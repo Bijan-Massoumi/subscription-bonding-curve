@@ -62,14 +62,16 @@ abstract contract SubscriptionPoolTracker is ISubscriptionPoolTrackerErrors {
         priceAtTime: oldPrice,
         rateAtTime: subscriptionRate
       })
-    ); 
+    );
   }
 
   function _setMinimumPoolRatio(uint256 newMinimumPoolRatio) internal {
     minimumPoolRatio = newMinimumPoolRatio;
   }
 
-  function _getMinimumPool(uint256 currentPrice) internal view returns (uint256) { 
+  function _getMinimumPool(
+    uint256 currentPrice
+  ) internal view returns (uint256) {
     return (currentPrice * minimumPoolRatio) / 10000;
   }
 
@@ -77,20 +79,17 @@ abstract contract SubscriptionPoolTracker is ISubscriptionPoolTrackerErrors {
     address owner,
     uint256 amount,
     uint256 currentPrice
-  )  internal view returns (uint256, uint256) {
+  ) internal view returns (uint256, uint256) {
     SubscriptionPoolCheckpoint checkpoint = _subscriptionCheckpoints[owner];
     uint256 feesToCollect = _calculateFees(
-        currentPrice,
-        checkpoint.lastModifiedAt,
-        checkpoint.subscriptionPoolRemaining,
-        amount
+      currentPrice,
+      checkpoint.lastModifiedAt,
+      checkpoint.subscriptionPoolRemaining,
+      amount
     );
 
     if (feesToCollect >= checkpoint.subscriptionPoolRemaining) {
-        return (
-            0,
-            feesToCollect
-        );
+      return (0, feesToCollect);
     }
     return (
       checkpoint.subscriptionPoolRemaining - feesToCollect,
@@ -98,16 +97,6 @@ abstract contract SubscriptionPoolTracker is ISubscriptionPoolTrackerErrors {
     );
   }
 
-
-  /*
-   * @notice Calculates the fees that have accrued since the last checkpoint
-   * and the time at which the subscriptionPool ran out (i.e. liquidation began)
-   * @param statedPrice The price at which the subscriptionPool was last modified
-   * @param lastModifiedAt The time at which the subscriptionPool/statedPrice was last modified
-   * @param subscriptionPoolRemaining The amount of subscriptionPool remaining
-   * @return totalFee The total fees that have accrued since the last checkpoint
-   * @return liquidationTime The time at which the subscriptionPool hit 0
-   */
   function _calculateFees(
     uint256 currentPrice,
     uint256 lastModifiedAt,
@@ -119,15 +108,16 @@ abstract contract SubscriptionPoolTracker is ISubscriptionPoolTrackerErrors {
     uint256 startTime = lastModifiedAt;
     // iterate through all fee changes that have happened since the last checkpoint
     for (uint256 i = 0; i < paramChanges.length; i++) {
-       ParamChange pc = paramChanges[i];
-      
+      ParamChange pc = paramChanges[i];
+
       if (pc.timestamp > startTime) {
-        uint256 intervalFee = numOfNfts * SafUtils._calculateSafBetweenTimes(
-          pc.priceAtTime,
-          startTime,
-          ParamChange,
-          pc.rateAtTime
-        );
+        uint256 intervalFee = numOfNfts *
+          SafUtils._calculateSafBetweenTimes(
+            pc.priceAtTime,
+            startTime,
+            ParamChange,
+            pc.rateAtTime
+          );
         totalFee += intervalFee;
         // if the total fee is greater than the subscriptionPool remaining, we know that the subscriptionPool ran out
         if (totalFee > subscriptionPoolRemaining) {
@@ -139,20 +129,30 @@ abstract contract SubscriptionPoolTracker is ISubscriptionPoolTrackerErrors {
     }
 
     // calculate the fee for the current interval (i.e. since the last fee change)
-    totalFee += numOfNfts * SafUtils._calculateSafBetweenTimes(
-      currentPrice,
-      startTime,
-      block.timestamp,
-      subscriptionRate
-    );
+    totalFee +=
+      numOfNfts *
+      SafUtils._calculateSafBetweenTimes(
+        currentPrice,
+        startTime,
+        block.timestamp,
+        subscriptionRate
+      );
 
     return totalFee;
   }
 
+  function _updateCheckpoint(
+    address trader,
+    uint256 newSubPool
+  ) internal {
+    SubscriptionPoolCheckpoint storage cp = _subscriptionCheckpoints[trader];
+    cp.subscriptionPoolRemaining = newSubPool;
+    cp.lastModifiedAt = block.timestamp; 
+  }
 
   // ---------- below methods havent been converted
 
-    // TODO fix this
+  // TODO fix this
   function _updateSubscriptionPool(
     address owner,
     int256 subscriptionPoolDelta,
@@ -165,13 +165,12 @@ abstract contract SubscriptionPoolTracker is ISubscriptionPoolTrackerErrors {
       uint256 newSubscriptionPool
     )
   {
-    SubscriptionPoolCheckpoint storage cp = _subscriptionCheckpoints[
-      tokenId
-    ];
+    SubscriptionPoolCheckpoint storage cp = _subscriptionCheckpoints[tokenId];
     uint256 subscriptionPoolRemaining;
     (
       subscriptionPoolRemaining,
       feesToCollect,
+
     ) = _getSubscriptionPoolRemaining(owner, amount, currentPrice);
 
     //  apply deltas to existing pool / price

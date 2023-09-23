@@ -96,17 +96,22 @@ abstract contract SubscriptionKeys is SubscriptionPoolTracker {
       "Only the shares' subject can buy the first share"
     );
     uint256 price = getPrice(supply, amount);
-    uint256 subPoolMinimum = _getMinimumPool( getPrice(supply+amount,1));
+    uint256 subPoolMinimum = _getMinimumPool(getPrice(supply+amount,1));
+    require(msg.value > price, "Inusfficient nft price");
 
-    require(msg.value >= price + SubPoolMinimum, "Insufficient payment");
-    _updatePriceParam(price);
+    // is the trader paying enought to cover minimum pool requirements?
+    uint256 subPoolDelta = msg.value - price;
+    uint256 traderPoolRemaining;
+    (traderPoolRemaining, ) = _getSubscriptionPoolRemaining(msg.sender, _balances[msg.sender], getPrice(supply, 1));
+    uint256 newSubscriptionPool = (subPoolDelta + traderPoolRemaining);
+    require(newSubscriptionPool > SubPoolMinimum, "Insufficient payment");
 
-    uint256 subPoolAddition = msg.value - SubPoolMinimum;
-    //TODO: add to ther subscription pool checkpoint. subtract their fees owed as well. 
-    // bond at last checkpoint + new amount they're adding - fees that have been reaped
-
+    // purchase tokens
     _balances[msg.sender] = _balances[msg.sender] + amount;
     supply = supply + amount;
+    // tokens have been bought, params have changed
+    _updatePriceParam(price);
+    _updateCheckpoint(msg.sender, newSubscriptionPool);
 
     //TODO: emit new subscription Pool
     emit Trade(
