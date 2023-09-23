@@ -3,9 +3,7 @@ pragma solidity ^0.8.18;
 
 import "./SubscriptionPoolTracker.sol";
 
-
 // TODO add method that liquidates all users, it should give a gas refund, it should revert if there are no users to liquidate
-
 abstract contract SubscriptionKeys is SubscriptionPoolTracker {
   event Trade(
     address trader,
