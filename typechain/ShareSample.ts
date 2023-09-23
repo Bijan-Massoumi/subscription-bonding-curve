@@ -34,7 +34,9 @@ export interface ShareSampleInterface extends Interface {
       | "getPrice"
       | "getSellPrice"
       | "getSubscriptionPoolRemaining"
+      | "getSupply"
       | "increaseSubscriptionPool"
+      | "ping"
       | "reapAndWithdrawFees"
       | "reapSafForTokenIds"
       | "sellShares"
@@ -75,10 +77,12 @@ export interface ShareSampleInterface extends Interface {
     functionFragment: "getSubscriptionPoolRemaining",
     values?: undefined
   ): string;
+  encodeFunctionData(functionFragment: "getSupply", values?: undefined): string;
   encodeFunctionData(
     functionFragment: "increaseSubscriptionPool",
     values: [BigNumberish, BigNumberish]
   ): string;
+  encodeFunctionData(functionFragment: "ping", values?: undefined): string;
   encodeFunctionData(
     functionFragment: "reapAndWithdrawFees",
     values: [BigNumberish[]]
@@ -122,10 +126,12 @@ export interface ShareSampleInterface extends Interface {
     functionFragment: "getSubscriptionPoolRemaining",
     data: BytesLike
   ): Result;
+  decodeFunctionResult(functionFragment: "getSupply", data: BytesLike): Result;
   decodeFunctionResult(
     functionFragment: "increaseSubscriptionPool",
     data: BytesLike
   ): Result;
+  decodeFunctionResult(functionFragment: "ping", data: BytesLike): Result;
   decodeFunctionResult(
     functionFragment: "reapAndWithdrawFees",
     data: BytesLike
@@ -264,11 +270,15 @@ export interface ShareSample extends BaseContract {
 
   getSubscriptionPoolRemaining: TypedContractMethod<[], [bigint], "view">;
 
+  getSupply: TypedContractMethod<[], [bigint], "view">;
+
   increaseSubscriptionPool: TypedContractMethod<
     [tokenId: BigNumberish, amount: BigNumberish],
     [void],
     "nonpayable"
   >;
+
+  ping: TypedContractMethod<[], [bigint], "payable">;
 
   reapAndWithdrawFees: TypedContractMethod<
     [tokenIds: BigNumberish[]],
@@ -323,12 +333,18 @@ export interface ShareSample extends BaseContract {
     nameOrSignature: "getSubscriptionPoolRemaining"
   ): TypedContractMethod<[], [bigint], "view">;
   getFunction(
+    nameOrSignature: "getSupply"
+  ): TypedContractMethod<[], [bigint], "view">;
+  getFunction(
     nameOrSignature: "increaseSubscriptionPool"
   ): TypedContractMethod<
     [tokenId: BigNumberish, amount: BigNumberish],
     [void],
     "nonpayable"
   >;
+  getFunction(
+    nameOrSignature: "ping"
+  ): TypedContractMethod<[], [bigint], "payable">;
   getFunction(
     nameOrSignature: "reapAndWithdrawFees"
   ): TypedContractMethod<[tokenIds: BigNumberish[]], [void], "nonpayable">;

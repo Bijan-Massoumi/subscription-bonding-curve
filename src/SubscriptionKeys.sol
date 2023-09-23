@@ -2,6 +2,8 @@
 pragma solidity ^0.8.18;
 
 import "./SubscriptionPoolTracker.sol";
+import "forge-std/console.sol";
+
 
 // TODO add method that liquidates all users, it should give a gas refund, it should revert if there are no users to liquidate
 
@@ -62,6 +64,10 @@ abstract contract SubscriptionKeys is SubscriptionPoolTracker {
     return getPrice(supply - amount, amount);
   }
 
+  function getSupply() public view returns (uint256) {
+    return supply;
+  }
+
   function getMinimumSubPool() public view returns (uint256) {
     //TODO:  implement
   }
@@ -101,6 +107,7 @@ abstract contract SubscriptionKeys is SubscriptionPoolTracker {
     );
     uint256 newSubscriptionPool = (subPoolDelta + traderPoolRemaining);
     require(newSubscriptionPool > subPoolMinimum, "Insufficient payment");
+    console.log("here3");
 
     // reap fees for creator
     creatorFees += fees;
@@ -112,6 +119,7 @@ abstract contract SubscriptionKeys is SubscriptionPoolTracker {
     supply = supply + amount;
     // tokens have been bought, params have changed
     _updateCheckpoint(msg.sender, newSubscriptionPool);
+    console.log("here4");
 
     //TODO: emit new subscription Pool
     emit Trade(msg.sender, sharesSubject, true, amount, price, supply + amount);

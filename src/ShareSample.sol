@@ -9,4 +9,8 @@ contract ShareSample is SubscriptionKeys {
     uint256 _subscriptionRate,
     address _sharesSubject
   ) SubscriptionKeys(_withdrawAddress, _subscriptionRate, _sharesSubject) {}
+
+  function ping() payable public returns (uint256){
+    return 1;
+  }
 }

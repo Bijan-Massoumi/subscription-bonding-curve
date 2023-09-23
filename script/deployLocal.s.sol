@@ -16,6 +16,6 @@ contract DeployLocal is Script {
     function run() public {
         uint256 ownerpk = vm.envUint("PRIVATE_KEY");
         vm.startBroadcast(ownerpk);
-        keys = new ShareSample(owner, feeRate, owner);
+        new ShareSample(owner, feeRate, owner);
     }
 }
