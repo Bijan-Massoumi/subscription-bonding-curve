@@ -80,7 +80,9 @@ abstract contract SubscriptionPoolTracker is ISubscriptionPoolTrackerErrors {
     uint256 amount,
     uint256 currentPrice
   ) internal view returns (uint256, uint256) {
-    SubscriptionPoolCheckpoint memory checkpoint = _subscriptionCheckpoints[owner];
+    SubscriptionPoolCheckpoint memory checkpoint = _subscriptionCheckpoints[
+      owner
+    ];
     uint256 feesToCollect = _calculateFees(
       currentPrice,
       checkpoint.lastModifiedAt,
@@ -141,11 +143,9 @@ abstract contract SubscriptionPoolTracker is ISubscriptionPoolTrackerErrors {
     return totalFee;
   }
 
-  function _updateCheckpoint(
-    address trader,
-    uint256 newSubPool
-  ) internal {
+  function _updateCheckpoint(address trader, uint256 newSubPool) internal {
     SubscriptionPoolCheckpoint storage cp = _subscriptionCheckpoints[trader];
     cp.subscriptionPoolRemaining = newSubPool;
-    cp.lastModifiedAt = block.timestamp; 
+    cp.lastModifiedAt = block.timestamp;
   }
+}

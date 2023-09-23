@@ -1,0 +1,19 @@
+{
+  "name": "eth-nyc-protocol",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "directories": {
+    "lib": "lib",
+    "test": "test"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "rm -rf typechain ; forge compile --force ; typechain --target=ethers-v6 --out-dir ./typechain ./out/*Sample.sol/*.json"
+  },
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "typechain": "^8.3.1"
+  }
+}

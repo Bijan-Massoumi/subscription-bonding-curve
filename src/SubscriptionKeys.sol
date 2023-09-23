@@ -3,12 +3,9 @@ pragma solidity ^0.8.18;
 
 import "./SubscriptionPoolTracker.sol";
 
-
 // TODO add method that liquidates all users, it should give a gas refund, it should revert if there are no users to liquidate
 
 abstract contract SubscriptionKeys is SubscriptionPoolTracker {
-  using Address for address;
-
   event Trade(
     address trader,
     address subject,
@@ -65,34 +62,23 @@ abstract contract SubscriptionKeys is SubscriptionPoolTracker {
     return getPrice(supply - amount, amount);
   }
 
-  function getBuyPriceAfterFee(uint256 amount) public view returns (uint256) {
-    uint256 price = getBuyPrice(amount);
-    uint256 protocolFee = (price * protocolFeePercent) / 1 ether;
-    uint256 subjectFee = (price * subjectFeePercent) / 1 ether;
-    return price + protocolFee + subjectFee;
-  }
-
-  function getSellPriceAfterFee(uint256 amount) public view returns (uint256) {
-    uint256 price = getSellPrice(amount);
-    uint256 protocolFee = (price * protocolFeePercent) / 1 ether;
-    uint256 subjectFee = (price * subjectFeePercent) / 1 ether;
-    return price - protocolFee - subjectFee;
-  }
-
   function getMinimumSubPool() public view returns (uint256) {
     //TODO:  implement
   }
 
   function getSubscriptionPoolRemaining() public view returns (uint256) {
     uint256 subPoolRemaining;
-    (subPoolRemaining, ) = _getSubscriptionPoolRemaining(msg.sender, _balances[msg.sender], getPrice(supply, 1));
+    (subPoolRemaining, ) = _getSubscriptionPoolRemaining(
+      msg.sender,
+      _balances[msg.sender],
+      getPrice(supply, 1)
+    );
     return subPoolRemaining;
   }
 
   function getCurrentPrice() public view returns (uint256) {
     return getPrice(supply, 1);
   }
-
 
   // TODO is there a way to liquidate people before we buy to ensure the best price?
   function buyShares(uint256 amount) public payable {
@@ -101,20 +87,24 @@ abstract contract SubscriptionKeys is SubscriptionPoolTracker {
       "Only the shares' subject can buy the first share"
     );
     uint256 price = getPrice(supply, amount);
-    uint256 subPoolMinimum = _getMinimumPool(getPrice(supply+amount,1));
+    uint256 subPoolMinimum = _getMinimumPool(getPrice(supply + amount, 1));
     require(msg.value > price, "Inusfficient nft price");
 
     // is the trader paying enought to cover minimum pool requirements?
     uint256 subPoolDelta = msg.value - price;
     uint256 traderPoolRemaining;
     uint256 fees;
-    (traderPoolRemaining,fees ) = _getSubscriptionPoolRemaining(msg.sender, _balances[msg.sender], getCurrentPrice());
+    (traderPoolRemaining, fees) = _getSubscriptionPoolRemaining(
+      msg.sender,
+      _balances[msg.sender],
+      getCurrentPrice()
+    );
     uint256 newSubscriptionPool = (subPoolDelta + traderPoolRemaining);
-    require(newSubscriptionPool > SubPoolMinimum, "Insufficient payment");
+    require(newSubscriptionPool > subPoolMinimum, "Insufficient payment");
 
     // reap fees for creator
     creatorFees += fees;
-    
+
     // purchase tokens -------
     // save a timestamp of the currentParams for retroactive fee calculation
     _updatePriceParam(getCurrentPrice());
@@ -124,30 +114,22 @@ abstract contract SubscriptionKeys is SubscriptionPoolTracker {
     _updateCheckpoint(msg.sender, newSubscriptionPool);
 
     //TODO: emit new subscription Pool
-    emit Trade(
-      msg.sender,
-      sharesSubject,
-      true,
-      amount,
-      price,
-      supply + amount
-    );
+    emit Trade(msg.sender, sharesSubject, true, amount, price, supply + amount);
   }
 
   function sellShares(uint256 amount) public payable {
     require(supply > amount, "Cannot sell the last share");
     uint256 price = getPrice(supply - amount, amount);
-    require(
-    _balances[msg.sender] >= amount,
-      "Insufficient shares"
-    );
+    require(_balances[msg.sender] >= amount, "Insufficient shares");
 
     uint256 traderPoolRemaining;
     uint256 fees;
-    (traderPoolRemaining, fees ) = _getSubscriptionPoolRemaining(msg.sender, _balances[msg.sender], getCurrentPrice());
-    _balances[msg.sender] =
-      _balances[msg.sender] -
-      amount;
+    (traderPoolRemaining, fees) = _getSubscriptionPoolRemaining(
+      msg.sender,
+      _balances[msg.sender],
+      getCurrentPrice()
+    );
+    _balances[msg.sender] = _balances[msg.sender] - amount;
     supply = supply - amount;
     _updateCheckpoint(msg.sender, traderPoolRemaining);
     // reap fees for creator
@@ -168,19 +150,15 @@ abstract contract SubscriptionKeys is SubscriptionPoolTracker {
   function increaseSubscriptionPool(
     uint256 tokenId,
     uint256 amount
-  ) external override {
-    if (!_isApprovedOrOwner(msg.sender, tokenId)) revert IsNotApprovedOrOwner();
-
-    _alterStatedPriceAndSubscriptionPool(tokenId, int256(amount), 0);
+  ) external {
+    // TODO
   }
 
   function decreaseSubscriptionPool(
     uint256 tokenId,
     uint256 amount
-  ) external override {
-    if (!_isApprovedOrOwner(msg.sender, tokenId)) revert IsNotApprovedOrOwner();
-
-    _alterStatedPriceAndSubscriptionPool(tokenId, -int256(amount), 0);
+  ) external {
+    // TODO
   }
 
   function reapAndWithdrawFees(uint256[] calldata tokenIds) external {
@@ -188,17 +166,18 @@ abstract contract SubscriptionKeys is SubscriptionPoolTracker {
     withdrawAccumulatedFees();
   }
 
-
   function reapSafForTokenIds(uint256[] calldata tokenIds) public {
-    uint256 netFees = 0;
-    for (uint256 i = 0; i < tokenIds.length; i++) {
-      if (!_exists(tokenIds[i])) revert TokenDoesntExist();
-      netFees += _getFeesToCollectForToken(tokenIds[i]);
-    }
-    creatorFees += netFees;
+    //TODO
+    // uint256 netFees = 0;
+    // for (uint256 i = 0; i < tokenIds.length; i++) {
+    //   if (!_exists(tokenIds[i])) revert TokenDoesntExist();
+    //   netFees += _getFeesToCollectForToken(tokenIds[i]);
+    // }
+    // creatorFees += netFees;
   }
 
   function withdrawAccumulatedFees() public {
-    subscriptionPoolToken.safeTransfer(withdrawAddress, creatorFees);
-    creatorFees = 0;
+    // TODO
+    // creatorFees = 0;
   }
+}
