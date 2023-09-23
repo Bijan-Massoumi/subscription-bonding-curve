@@ -3,8 +3,7 @@
 pragma solidity ^0.8.18;
 
 import "forge-std/Test.sol";
-import "../src/ShareSample.sol";
-import "forge-std/console.sol";
+import "../src/ShareSample.sol";import "forge-std/console.sol";
 
 contract ShareSampleTest is Test {
   ShareSample shareSample;
@@ -26,8 +25,6 @@ contract ShareSampleTest is Test {
     // Initially, supply should be 0
     assertEq(shareSample.getSupply(), 0);
 
-    uint buyPrice = shareSample.getBuyPrice(1);
-    console.log(buyPrice);
     // Only sharesSubject can buy the first share
     vm.deal(sharesSubject, 20 ether);
     vm.prank(sharesSubject);    
@@ -35,15 +32,25 @@ contract ShareSampleTest is Test {
 
     vm.prank(sharesSubject); 
     uint256 poolRemaining = shareSample.getSubscriptionPoolRemaining();    
-    console.log(poolRemaining);
-  
+    assertEq(poolRemaining, oneETH);
     // // After buying, supply should be 1
     assertEq(shareSample.getSupply(), 1);
 
-    // // Test selling shares
-    // shareSample.sellShares{value: oneETH}(1);
+    uint buyPrice = shareSample.getBuyPrice(1);
+    // wei
+    assertEq(buyPrice, 62500000000000);
 
-    // // After selling, supply should be 0 again
-    // assertEq(shareSample.getSupply(), 0);
+    vm.prank(sharesSubject);    
+    shareSample.buyShares{value: 62500000000000}(1);
+
+    // // Test selling shares
+    vm.prank(sharesSubject); 
+    shareSample.sellShares(1);
+
+    assertEq(shareSample.getSupply(), 1);
+    buyPrice = shareSample.getBuyPrice(1);
+    // wei
+    assertEq(buyPrice, 62500000000000);
+   
   }
 }
