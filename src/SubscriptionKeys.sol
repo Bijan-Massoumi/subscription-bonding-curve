@@ -33,8 +33,6 @@ abstract contract SubscriptionKeys is SubscriptionPoolTracker {
     sharesSubject = _sharesSubject;
   }
 
-
-
   // Bonding Curve methods ------------------------
 
   function getPrice(
@@ -95,6 +93,7 @@ abstract contract SubscriptionKeys is SubscriptionPoolTracker {
       supply > 0 || sharesSubject == msg.sender,
       "Only the shares' subject can buy the first share"
     );
+    require(amount > 0, "Cannot buy 0 shares");
     uint256 price = getPrice(supply, amount);
     uint256 subPoolMinimum = _getMinimumPool(getPrice(supply + amount, 1));
     require(msg.value >= price, "Inusfficient nft price");
@@ -128,6 +127,7 @@ abstract contract SubscriptionKeys is SubscriptionPoolTracker {
 
   function sellShares(uint256 amount) public payable {
     require(supply > amount, "Cannot sell the last share");
+    require(amount > 0, "Cannot sell 0 shares");
     uint256 price = getPrice(supply - amount, amount);
     require(_balances[msg.sender] >= amount, "Insufficient shares");
 

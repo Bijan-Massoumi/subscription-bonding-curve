@@ -11,7 +11,6 @@ contract ShareSampleTest is Test {
 
   address constant sharesSubject = address(0x123);
   address constant withdrawAddress = address(0x456);
-  uint256 constant subscriptionRate = 100;
   uint256 constant oneETH = 1 ether;
 
   function setUp() public {
