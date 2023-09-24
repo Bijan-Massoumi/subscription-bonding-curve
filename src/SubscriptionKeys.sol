@@ -153,6 +153,9 @@ abstract contract SubscriptionKeys is SubscriptionPoolTracker {
       price,
       supply - amount
     );
+
+    (bool success1, ) = msg.sender.call{value: price}("");
+    require(success1, "Unable to send funds");
   }
 
   // External functions ------------------------------------------------------
@@ -170,23 +173,12 @@ abstract contract SubscriptionKeys is SubscriptionPoolTracker {
     // TODO
   }
 
-  function reapAndWithdrawFees(uint256[] calldata tokenIds) external {
-    reapSafForTokenIds(tokenIds);
-    withdrawAccumulatedFees();
-  }
-
-  function reapSafForTokenIds(uint256[] calldata tokenIds) public {
-    //TODO
-    // uint256 netFees = 0;
-    // for (uint256 i = 0; i < tokenIds.length; i++) {
-    //   if (!_exists(tokenIds[i])) revert TokenDoesntExist();
-    //   netFees += _getFeesToCollectForToken(tokenIds[i]);
-    // }
-    // creatorFees += netFees;
-  }
-
   function withdrawAccumulatedFees() public {
-    // TODO
-    // creatorFees = 0;
+    uint256 pool = getSubscriptionPoolRemaining(msg.sender);
+    require(pool > 0, "Insufficient pool"); 
+    (bool success,) = msg.sender.call{value: pool}("");
+    require(success, "Unable to send funds");
+    _updateCheckpoint(msg.sender, 0);
+    creatorFees = 0;
   }
 }
