@@ -9,7 +9,7 @@
   },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "build": "rm -rf typechain ; forge compile --force ; typechain --target=ethers-v5 --out-dir ./typechain ./out/*Sample.sol/*.json",
+    "build": "rm -rf typechain ; forge compile --force ; typechain --target=ethers-v5 --out-dir ./typechain ./out/*Sample.sol/*.json; cp -r typechain ../lens-pwa/",
     "startNode": "anvil -m 'test test test test test test test test test test test junk' --chain-id 1337 --timestamp 1685142584",
     "deployLocal": "forge script script/deployLocal.s.sol --rpc-url http://127.0.0.1:8545 --broadcast --skip-simulation",
     "deployLocalFactory": "forge script script/deployLocalFactory.s.sol --rpc-url http://127.0.0.1:8545 --broadcast --skip-simulation"
