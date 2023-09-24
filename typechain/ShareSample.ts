@@ -40,8 +40,6 @@ export interface ShareSampleInterface extends utils.Interface {
     "getSubscriptionPoolRemaining(address)": FunctionFragment;
     "getSupply()": FunctionFragment;
     "increaseSubscriptionPool(uint256,uint256)": FunctionFragment;
-    "reapAndWithdrawFees(uint256[])": FunctionFragment;
-    "reapSafForTokenIds(uint256[])": FunctionFragment;
     "sellShares(uint256)": FunctionFragment;
     "withdrawAccumulatedFees()": FunctionFragment;
   };
@@ -59,8 +57,6 @@ export interface ShareSampleInterface extends utils.Interface {
       | "getSubscriptionPoolRemaining"
       | "getSupply"
       | "increaseSubscriptionPool"
-      | "reapAndWithdrawFees"
-      | "reapSafForTokenIds"
       | "sellShares"
       | "withdrawAccumulatedFees"
   ): FunctionFragment;
@@ -104,14 +100,6 @@ export interface ShareSampleInterface extends utils.Interface {
     values: [BigNumberish, BigNumberish]
   ): string;
   encodeFunctionData(
-    functionFragment: "reapAndWithdrawFees",
-    values: [BigNumberish[]]
-  ): string;
-  encodeFunctionData(
-    functionFragment: "reapSafForTokenIds",
-    values: [BigNumberish[]]
-  ): string;
-  encodeFunctionData(
     functionFragment: "sellShares",
     values: [BigNumberish]
   ): string;
@@ -150,14 +138,6 @@ export interface ShareSampleInterface extends utils.Interface {
   decodeFunctionResult(functionFragment: "getSupply", data: BytesLike): Result;
   decodeFunctionResult(
     functionFragment: "increaseSubscriptionPool",
-    data: BytesLike
-  ): Result;
-  decodeFunctionResult(
-    functionFragment: "reapAndWithdrawFees",
-    data: BytesLike
-  ): Result;
-  decodeFunctionResult(
-    functionFragment: "reapSafForTokenIds",
     data: BytesLike
   ): Result;
   decodeFunctionResult(functionFragment: "sellShares", data: BytesLike): Result;
@@ -276,16 +256,6 @@ export interface ShareSample extends BaseContract {
       overrides?: Overrides & { from?: string }
     ): Promise<ContractTransaction>;
 
-    reapAndWithdrawFees(
-      tokenIds: BigNumberish[],
-      overrides?: Overrides & { from?: string }
-    ): Promise<ContractTransaction>;
-
-    reapSafForTokenIds(
-      tokenIds: BigNumberish[],
-      overrides?: Overrides & { from?: string }
-    ): Promise<ContractTransaction>;
-
     sellShares(
       amount: BigNumberish,
       overrides?: PayableOverrides & { from?: string }
@@ -342,16 +312,6 @@ export interface ShareSample extends BaseContract {
     overrides?: Overrides & { from?: string }
   ): Promise<ContractTransaction>;
 
-  reapAndWithdrawFees(
-    tokenIds: BigNumberish[],
-    overrides?: Overrides & { from?: string }
-  ): Promise<ContractTransaction>;
-
-  reapSafForTokenIds(
-    tokenIds: BigNumberish[],
-    overrides?: Overrides & { from?: string }
-  ): Promise<ContractTransaction>;
-
   sellShares(
     amount: BigNumberish,
     overrides?: PayableOverrides & { from?: string }
@@ -402,16 +362,6 @@ export interface ShareSample extends BaseContract {
     increaseSubscriptionPool(
       tokenId: BigNumberish,
       amount: BigNumberish,
-      overrides?: CallOverrides
-    ): Promise<void>;
-
-    reapAndWithdrawFees(
-      tokenIds: BigNumberish[],
-      overrides?: CallOverrides
-    ): Promise<void>;
-
-    reapSafForTokenIds(
-      tokenIds: BigNumberish[],
       overrides?: CallOverrides
     ): Promise<void>;
 
@@ -499,16 +449,6 @@ export interface ShareSample extends BaseContract {
       overrides?: Overrides & { from?: string }
     ): Promise<BigNumber>;
 
-    reapAndWithdrawFees(
-      tokenIds: BigNumberish[],
-      overrides?: Overrides & { from?: string }
-    ): Promise<BigNumber>;
-
-    reapSafForTokenIds(
-      tokenIds: BigNumberish[],
-      overrides?: Overrides & { from?: string }
-    ): Promise<BigNumber>;
-
     sellShares(
       amount: BigNumberish,
       overrides?: PayableOverrides & { from?: string }
@@ -566,16 +506,6 @@ export interface ShareSample extends BaseContract {
     increaseSubscriptionPool(
       tokenId: BigNumberish,
       amount: BigNumberish,
-      overrides?: Overrides & { from?: string }
-    ): Promise<PopulatedTransaction>;
-
-    reapAndWithdrawFees(
-      tokenIds: BigNumberish[],
-      overrides?: Overrides & { from?: string }
-    ): Promise<PopulatedTransaction>;
-
-    reapSafForTokenIds(
-      tokenIds: BigNumberish[],
       overrides?: Overrides & { from?: string }
     ): Promise<PopulatedTransaction>;
 
