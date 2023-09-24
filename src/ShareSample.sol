@@ -25,7 +25,7 @@ contract ShareSampleFactory is Ownable {
     address indexed sharesSubject
   );
 
-  function createShareSample(address _sharesSubject) external onlyOwner {
+  function createShareSample(address _sharesSubject)  external onlyOwner returns (address) {
     // Require that a contract hasn’t been deployed for this _sharesSubject before
     require(sharesSubjectToContract[_sharesSubject] == address(0), "Contract already deployed for this sharesSubject");
     
@@ -44,6 +44,8 @@ contract ShareSampleFactory is Ownable {
       tenPercent,
       _sharesSubject
     );
+
+    return newShareSample;
   }
   
   function getDeployedContracts() external view returns (address[] memory) {
