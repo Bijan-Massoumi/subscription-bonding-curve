@@ -33,6 +33,8 @@ abstract contract SubscriptionKeys is SubscriptionPoolTracker {
     sharesSubject = _sharesSubject;
   }
 
+
+
   // Bonding Curve methods ------------------------
 
   function getPrice(
@@ -69,11 +71,15 @@ abstract contract SubscriptionKeys is SubscriptionPoolTracker {
     //TODO:  implement
   }
 
-  function getSubscriptionPoolRemaining() public view returns (uint256) {
+  function balanceOf(address addr) public view returns (uint256) {
+    return _balances[addr];
+  }
+
+  function getSubscriptionPoolRemaining(address addr) public view returns (uint256) {
     uint256 subPoolRemaining;
     (subPoolRemaining, ) = _getSubscriptionPoolRemaining(
-      msg.sender,
-      _balances[msg.sender],
+      addr,
+      _balances[addr],
       getPrice(supply, 1)
     );
     return subPoolRemaining;

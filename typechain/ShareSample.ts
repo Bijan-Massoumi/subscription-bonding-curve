@@ -29,6 +29,7 @@ import type {
 
 export interface ShareSampleInterface extends utils.Interface {
   functions: {
+    "balanceOf(address)": FunctionFragment;
     "buyShares(uint256)": FunctionFragment;
     "decreaseSubscriptionPool(uint256,uint256)": FunctionFragment;
     "getBuyPrice(uint256)": FunctionFragment;
@@ -36,7 +37,7 @@ export interface ShareSampleInterface extends utils.Interface {
     "getMinimumSubPool()": FunctionFragment;
     "getPrice(uint256,uint256)": FunctionFragment;
     "getSellPrice(uint256)": FunctionFragment;
-    "getSubscriptionPoolRemaining()": FunctionFragment;
+    "getSubscriptionPoolRemaining(address)": FunctionFragment;
     "getSupply()": FunctionFragment;
     "increaseSubscriptionPool(uint256,uint256)": FunctionFragment;
     "reapAndWithdrawFees(uint256[])": FunctionFragment;
@@ -47,6 +48,7 @@ export interface ShareSampleInterface extends utils.Interface {
 
   getFunction(
     nameOrSignatureOrTopic:
+      | "balanceOf"
       | "buyShares"
       | "decreaseSubscriptionPool"
       | "getBuyPrice"
@@ -63,6 +65,7 @@ export interface ShareSampleInterface extends utils.Interface {
       | "withdrawAccumulatedFees"
   ): FunctionFragment;
 
+  encodeFunctionData(functionFragment: "balanceOf", values: [string]): string;
   encodeFunctionData(
     functionFragment: "buyShares",
     values: [BigNumberish]
@@ -93,7 +96,7 @@ export interface ShareSampleInterface extends utils.Interface {
   ): string;
   encodeFunctionData(
     functionFragment: "getSubscriptionPoolRemaining",
-    values?: undefined
+    values: [string]
   ): string;
   encodeFunctionData(functionFragment: "getSupply", values?: undefined): string;
   encodeFunctionData(
@@ -117,6 +120,7 @@ export interface ShareSampleInterface extends utils.Interface {
     values?: undefined
   ): string;
 
+  decodeFunctionResult(functionFragment: "balanceOf", data: BytesLike): Result;
   decodeFunctionResult(functionFragment: "buyShares", data: BytesLike): Result;
   decodeFunctionResult(
     functionFragment: "decreaseSubscriptionPool",
@@ -226,6 +230,8 @@ export interface ShareSample extends BaseContract {
   removeListener: OnEvent<this>;
 
   functions: {
+    balanceOf(addr: string, overrides?: CallOverrides): Promise<[BigNumber]>;
+
     buyShares(
       amount: BigNumberish,
       overrides?: PayableOverrides & { from?: string }
@@ -258,6 +264,7 @@ export interface ShareSample extends BaseContract {
     ): Promise<[BigNumber]>;
 
     getSubscriptionPoolRemaining(
+      addr: string,
       overrides?: CallOverrides
     ): Promise<[BigNumber]>;
 
@@ -288,6 +295,8 @@ export interface ShareSample extends BaseContract {
       overrides?: Overrides & { from?: string }
     ): Promise<ContractTransaction>;
   };
+
+  balanceOf(addr: string, overrides?: CallOverrides): Promise<BigNumber>;
 
   buyShares(
     amount: BigNumberish,
@@ -320,7 +329,10 @@ export interface ShareSample extends BaseContract {
     overrides?: CallOverrides
   ): Promise<BigNumber>;
 
-  getSubscriptionPoolRemaining(overrides?: CallOverrides): Promise<BigNumber>;
+  getSubscriptionPoolRemaining(
+    addr: string,
+    overrides?: CallOverrides
+  ): Promise<BigNumber>;
 
   getSupply(overrides?: CallOverrides): Promise<BigNumber>;
 
@@ -350,6 +362,8 @@ export interface ShareSample extends BaseContract {
   ): Promise<ContractTransaction>;
 
   callStatic: {
+    balanceOf(addr: string, overrides?: CallOverrides): Promise<BigNumber>;
+
     buyShares(amount: BigNumberish, overrides?: CallOverrides): Promise<void>;
 
     decreaseSubscriptionPool(
@@ -378,7 +392,10 @@ export interface ShareSample extends BaseContract {
       overrides?: CallOverrides
     ): Promise<BigNumber>;
 
-    getSubscriptionPoolRemaining(overrides?: CallOverrides): Promise<BigNumber>;
+    getSubscriptionPoolRemaining(
+      addr: string,
+      overrides?: CallOverrides
+    ): Promise<BigNumber>;
 
     getSupply(overrides?: CallOverrides): Promise<BigNumber>;
 
@@ -436,6 +453,8 @@ export interface ShareSample extends BaseContract {
   };
 
   estimateGas: {
+    balanceOf(addr: string, overrides?: CallOverrides): Promise<BigNumber>;
+
     buyShares(
       amount: BigNumberish,
       overrides?: PayableOverrides & { from?: string }
@@ -467,7 +486,10 @@ export interface ShareSample extends BaseContract {
       overrides?: CallOverrides
     ): Promise<BigNumber>;
 
-    getSubscriptionPoolRemaining(overrides?: CallOverrides): Promise<BigNumber>;
+    getSubscriptionPoolRemaining(
+      addr: string,
+      overrides?: CallOverrides
+    ): Promise<BigNumber>;
 
     getSupply(overrides?: CallOverrides): Promise<BigNumber>;
 
@@ -498,6 +520,11 @@ export interface ShareSample extends BaseContract {
   };
 
   populateTransaction: {
+    balanceOf(
+      addr: string,
+      overrides?: CallOverrides
+    ): Promise<PopulatedTransaction>;
+
     buyShares(
       amount: BigNumberish,
       overrides?: PayableOverrides & { from?: string }
@@ -530,6 +557,7 @@ export interface ShareSample extends BaseContract {
     ): Promise<PopulatedTransaction>;
 
     getSubscriptionPoolRemaining(
+      addr: string,
       overrides?: CallOverrides
     ): Promise<PopulatedTransaction>;
 

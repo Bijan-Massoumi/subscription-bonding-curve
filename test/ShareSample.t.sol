@@ -31,8 +31,7 @@ contract ShareSampleTest is Test {
     vm.prank(sharesSubject);
     shareSample.buyShares{value: oneETH}(1);
 
-    vm.prank(sharesSubject);
-    uint256 poolRemaining = shareSample.getSubscriptionPoolRemaining();
+    uint256 poolRemaining = shareSample.getSubscriptionPoolRemaining(sharesSubject);
     assertEq(poolRemaining, oneETH);
     // // After buying, supply should be 1
     assertEq(shareSample.getSupply(), 1);
