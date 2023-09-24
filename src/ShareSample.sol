@@ -4,7 +4,7 @@ pragma solidity ^0.8.18;
 import "./SubscriptionKeys.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
-uint256 constant tenPercent = 10000;
+uint256 constant perc = 15000;
 
 contract ShareSample is SubscriptionKeys {
   constructor(
@@ -31,7 +31,7 @@ contract ShareSampleFactory is Ownable {
     
     newShareSample = address(new ShareSample(
       _sharesSubject,
-      tenPercent,
+      perc,
       _sharesSubject
     ));
     
@@ -41,7 +41,7 @@ contract ShareSampleFactory is Ownable {
     
     emit ShareSampleCreated(
       newShareSample,
-      tenPercent,
+      perc,
       _sharesSubject
     );
 
