@@ -23,7 +23,7 @@
     {
       "transactionHash": "0x86b2846de91f93ccd93a2fb461fd542327cb2aaa4e17b55d1201da1a734d6bc2",
       "transactionIndex": "0x0",
-      "blockHash": "0xe8d58274db26fb807f9caab7c7a37df914fea99d9a739a0d5b2efa71aabdca47",
+      "blockHash": "0xa3a28f57e6006d5889531cf4557ae8ca6e6be4186aad8ae4d2decff6bb2ad0ab",
       "blockNumber": "0x1",
       "from": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
       "to": null,
@@ -39,7 +39,7 @@
             "0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266"
           ],
           "data": "0x",
-          "blockHash": "0xe8d58274db26fb807f9caab7c7a37df914fea99d9a739a0d5b2efa71aabdca47",
+          "blockHash": "0xa3a28f57e6006d5889531cf4557ae8ca6e6be4186aad8ae4d2decff6bb2ad0ab",
           "blockNumber": "0x1",
           "transactionHash": "0x86b2846de91f93ccd93a2fb461fd542327cb2aaa4e17b55d1201da1a734d6bc2",
           "transactionIndex": "0x0",
@@ -57,7 +57,7 @@
   "pending": [],
   "path": "/Users/bmassoumi/personal/eth-nyc-protocol/broadcast/deployLocalFactory.s.sol/1337/run-latest.json",
   "returns": {},
-  "timestamp": 1695539688,
+  "timestamp": 1695535615,
   "chain": 1337,
   "multi": false,
   "commit": "9af09f7"

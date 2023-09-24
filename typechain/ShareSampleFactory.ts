@@ -35,7 +35,7 @@ export interface ShareSampleFactoryInterface extends utils.Interface {
     "newShareSample()": FunctionFragment;
     "owner()": FunctionFragment;
     "renounceOwnership()": FunctionFragment;
-    "sharesSubjectToContract(address)": FunctionFragment;
+    "subjectToContract(address)": FunctionFragment;
     "transferOwnership(address)": FunctionFragment;
   };
 
@@ -48,7 +48,7 @@ export interface ShareSampleFactoryInterface extends utils.Interface {
       | "newShareSample"
       | "owner"
       | "renounceOwnership"
-      | "sharesSubjectToContract"
+      | "subjectToContract"
       | "transferOwnership"
   ): FunctionFragment;
 
@@ -78,7 +78,7 @@ export interface ShareSampleFactoryInterface extends utils.Interface {
     values?: undefined
   ): string;
   encodeFunctionData(
-    functionFragment: "sharesSubjectToContract",
+    functionFragment: "subjectToContract",
     values: [string]
   ): string;
   encodeFunctionData(
@@ -112,7 +112,7 @@ export interface ShareSampleFactoryInterface extends utils.Interface {
     data: BytesLike
   ): Result;
   decodeFunctionResult(
-    functionFragment: "sharesSubjectToContract",
+    functionFragment: "subjectToContract",
     data: BytesLike
   ): Result;
   decodeFunctionResult(
@@ -196,7 +196,9 @@ export interface ShareSampleFactory extends BaseContract {
       overrides?: CallOverrides
     ): Promise<[string]>;
 
-    getDeployedContracts(overrides?: CallOverrides): Promise<[string[]]>;
+    getDeployedContracts(
+      overrides?: CallOverrides
+    ): Promise<[string[], string[]]>;
 
     newShareSample(overrides?: CallOverrides): Promise<[string]>;
 
@@ -206,7 +208,7 @@ export interface ShareSampleFactory extends BaseContract {
       overrides?: Overrides & { from?: string }
     ): Promise<ContractTransaction>;
 
-    sharesSubjectToContract(
+    subjectToContract(
       arg0: string,
       overrides?: CallOverrides
     ): Promise<[string]>;
@@ -232,7 +234,9 @@ export interface ShareSampleFactory extends BaseContract {
     overrides?: CallOverrides
   ): Promise<string>;
 
-  getDeployedContracts(overrides?: CallOverrides): Promise<string[]>;
+  getDeployedContracts(
+    overrides?: CallOverrides
+  ): Promise<[string[], string[]]>;
 
   newShareSample(overrides?: CallOverrides): Promise<string>;
 
@@ -242,10 +246,7 @@ export interface ShareSampleFactory extends BaseContract {
     overrides?: Overrides & { from?: string }
   ): Promise<ContractTransaction>;
 
-  sharesSubjectToContract(
-    arg0: string,
-    overrides?: CallOverrides
-  ): Promise<string>;
+  subjectToContract(arg0: string, overrides?: CallOverrides): Promise<string>;
 
   transferOwnership(
     newOwner: string,
@@ -268,7 +269,9 @@ export interface ShareSampleFactory extends BaseContract {
       overrides?: CallOverrides
     ): Promise<string>;
 
-    getDeployedContracts(overrides?: CallOverrides): Promise<string[]>;
+    getDeployedContracts(
+      overrides?: CallOverrides
+    ): Promise<[string[], string[]]>;
 
     newShareSample(overrides?: CallOverrides): Promise<string>;
 
@@ -276,10 +279,7 @@ export interface ShareSampleFactory extends BaseContract {
 
     renounceOwnership(overrides?: CallOverrides): Promise<void>;
 
-    sharesSubjectToContract(
-      arg0: string,
-      overrides?: CallOverrides
-    ): Promise<string>;
+    subjectToContract(arg0: string, overrides?: CallOverrides): Promise<string>;
 
     transferOwnership(
       newOwner: string,
@@ -335,7 +335,7 @@ export interface ShareSampleFactory extends BaseContract {
       overrides?: Overrides & { from?: string }
     ): Promise<BigNumber>;
 
-    sharesSubjectToContract(
+    subjectToContract(
       arg0: string,
       overrides?: CallOverrides
     ): Promise<BigNumber>;
@@ -374,7 +374,7 @@ export interface ShareSampleFactory extends BaseContract {
       overrides?: Overrides & { from?: string }
     ): Promise<PopulatedTransaction>;
 
-    sharesSubjectToContract(
+    subjectToContract(
       arg0: string,
       overrides?: CallOverrides
     ): Promise<PopulatedTransaction>;
