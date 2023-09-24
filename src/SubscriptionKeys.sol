@@ -53,6 +53,10 @@ abstract contract SubscriptionKeys is SubscriptionPoolTracker {
     return (summation * 1 ether) / 16000;
   }
 
+  function getShareSubject() public view returns (address) {
+    return sharesSubject;
+  }
+
   function getBuyPrice(uint256 amount) public view returns (uint256) {
     return getPrice(supply, amount);
   }
@@ -73,7 +77,9 @@ abstract contract SubscriptionKeys is SubscriptionPoolTracker {
     return _balances[addr];
   }
 
-  function getSubscriptionPoolRemaining(address addr) public view returns (uint256) {
+  function getSubscriptionPoolRemaining(
+    address addr
+  ) public view returns (uint256) {
     uint256 subPoolRemaining;
     (subPoolRemaining, ) = _getSubscriptionPoolRemaining(
       addr,
@@ -87,12 +93,12 @@ abstract contract SubscriptionKeys is SubscriptionPoolTracker {
     return getPrice(supply, 1);
   }
 
+  function getTaxPrice(uint256 amount) public view returns (uint256) {
+    return getPrice(supply + amount, 1);
+  }
+
   // TODO is there a way to liquidate people before we buy to ensure the best price?
   function buyShares(uint256 amount) public payable {
-    require(
-      supply > 0 || sharesSubject == msg.sender,
-      "Only the shares' subject can buy the first share"
-    );
     require(amount > 0, "Cannot buy 0 shares");
     uint256 price = getPrice(supply, amount);
     uint256 subPoolMinimum = _getMinimumPool(getPrice(supply + amount, 1));
@@ -159,24 +165,18 @@ abstract contract SubscriptionKeys is SubscriptionPoolTracker {
   }
 
   // External functions ------------------------------------------------------
-  function increaseSubscriptionPool(
-    uint256 tokenId,
-    uint256 amount
-  ) external {
+  function increaseSubscriptionPool(uint256 tokenId, uint256 amount) external {
     // TODO
   }
 
-  function decreaseSubscriptionPool(
-    uint256 tokenId,
-    uint256 amount
-  ) external {
+  function decreaseSubscriptionPool(uint256 tokenId, uint256 amount) external {
     // TODO
   }
 
   function withdrawAccumulatedFees() public {
     uint256 pool = getSubscriptionPoolRemaining(msg.sender);
-    require(pool > 0, "Insufficient pool"); 
-    (bool success,) = msg.sender.call{value: pool}("");
+    require(pool > 0, "Insufficient pool");
+    (bool success, ) = msg.sender.call{value: pool}("");
     require(success, "Unable to send funds");
     _updateCheckpoint(msg.sender, 0);
     creatorFees = 0;

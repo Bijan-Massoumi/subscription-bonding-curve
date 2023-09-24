@@ -50,7 +50,7 @@ contract ShareSampleTest is Test {
     console.log(buyPrice);
 
     vm.prank(sharesSubject);
-    vm.expectRevert("Not enough funds to buy shares");
+    vm.expectRevert("Inusfficient nft price");
     shareSample.buyShares{value: 62500000000000}(1);
 
     //  Test selling shares
