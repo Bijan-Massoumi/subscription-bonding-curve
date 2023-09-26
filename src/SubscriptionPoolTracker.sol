@@ -17,7 +17,6 @@ struct ParamChange {
 
 abstract contract SubscriptionPoolTracker is ISubscriptionPoolTrackerErrors {
   event FeeCollected(
-    uint256 tokenId,
     uint256 feeCollected,
     uint256 subscriptionPoolRemaining,
     uint256 liquidationStartedAt
@@ -28,6 +27,7 @@ abstract contract SubscriptionPoolTracker is ISubscriptionPoolTrackerErrors {
 
   uint256 internal subscriptionRate;
   ParamChange[] paramChanges;
+  mapping(address => uint256) internal lastParamChangeIndex;
 
   // min percentage (10%) of total stated price that
   // must be convered by subscriptionPool
@@ -55,16 +55,6 @@ abstract contract SubscriptionPoolTracker is ISubscriptionPoolTrackerErrors {
     subscriptionRate = newSubscriptionRate;
   }
 
-  function _updatePriceParam(uint256 oldPrice) internal {
-    paramChanges.push(
-      ParamChange({
-        timestamp: block.timestamp,
-        priceAtTime: oldPrice,
-        rateAtTime: subscriptionRate
-      })
-    );
-  }
-
   function _setMinimumPoolRatio(uint256 newMinimumPoolRatio) internal {
     minimumPoolRatio = newMinimumPoolRatio;
   }
@@ -84,6 +74,7 @@ abstract contract SubscriptionPoolTracker is ISubscriptionPoolTrackerErrors {
       owner
     ];
     uint256 feesToCollect = _calculateFees(
+      owner,
       currentPrice,
       checkpoint.lastModifiedAt,
       checkpoint.subscriptionPoolRemaining,
@@ -100,6 +91,7 @@ abstract contract SubscriptionPoolTracker is ISubscriptionPoolTrackerErrors {
   }
 
   function _calculateFees(
+    address trader,
     uint256 currentPrice,
     uint256 lastModifiedAt,
     uint256 subscriptionPoolRemaining,
@@ -108,20 +100,19 @@ abstract contract SubscriptionPoolTracker is ISubscriptionPoolTrackerErrors {
     uint256 totalFee;
     uint256 prevIntervalFee;
     uint256 startTime = lastModifiedAt;
-    // iterate through all fee changes that have happened since the last checkpoint
-    for (uint256 i = 0; i < paramChanges.length; i++) {
-      ParamChange memory pc = paramChanges[i];
+    uint256 startIndex = lastParamChangeIndex[trader]; // Start from the last index that affected the trader
 
+    for (uint256 i = startIndex; i < paramChanges.length; i++) {
+      ParamChange memory pc = paramChanges[i];
       if (pc.timestamp > startTime) {
         uint256 intervalFee = numOfNfts *
-          SafUtils._calculateSafBetweenTimes(
+          SafUtils._calculateFeeBetweenTimes(
             pc.priceAtTime,
             startTime,
             pc.timestamp,
             pc.rateAtTime
           );
         totalFee += intervalFee;
-        // if the total fee is greater than the subscriptionPool remaining, we know that the subscriptionPool ran out
         if (totalFee > subscriptionPoolRemaining) {
           return totalFee;
         }
@@ -130,10 +121,9 @@ abstract contract SubscriptionPoolTracker is ISubscriptionPoolTrackerErrors {
       }
     }
 
-    // calculate the fee for the current interval (i.e. since the last fee change)
     totalFee +=
       numOfNfts *
-      SafUtils._calculateSafBetweenTimes(
+      SafUtils._calculateFeeBetweenTimes(
         currentPrice,
         startTime,
         block.timestamp,
@@ -143,7 +133,28 @@ abstract contract SubscriptionPoolTracker is ISubscriptionPoolTrackerErrors {
     return totalFee;
   }
 
-  function _updateCheckpoint(address trader, uint256 newSubPool) internal {
+  function _updateCheckpoints(
+    address trader,
+    uint256 currPrice,
+    uint256 newSubPool
+  ) internal {
+    // update pool checkpoint
+    _updateTraderPool(trader, newSubPool);
+
+    // update price checkpoint
+    paramChanges.push(
+      ParamChange({
+        timestamp: block.timestamp,
+        priceAtTime: currPrice,
+        rateAtTime: subscriptionRate
+      })
+    );
+    lastParamChangeIndex[trader] = paramChanges.length > 0
+      ? paramChanges.length - 1
+      : 0;
+  }
+
+  function _updateTraderPool(address trader, uint256 newSubPool) internal {
     SubscriptionPoolCheckpoint storage cp = _subscriptionCheckpoints[trader];
     cp.subscriptionPoolRemaining = newSubPool;
     cp.lastModifiedAt = block.timestamp;

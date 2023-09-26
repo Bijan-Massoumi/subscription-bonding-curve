@@ -4,7 +4,7 @@ pragma solidity ^0.8.18;
 library SafUtils {
     uint256 constant secondsInYear = 365 days;
 
-    function _calculateSafBetweenTimes(
+    function _calculateFeeBetweenTimes(
         uint256 totalStatedPrice,
         uint256 startTime,
         uint256 endTime,

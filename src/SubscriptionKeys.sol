@@ -116,17 +116,16 @@ abstract contract SubscriptionKeys is SubscriptionPoolTracker {
     uint256 newSubscriptionPool = (subPoolDelta + traderPoolRemaining);
     require(newSubscriptionPool > subPoolMinimum, "Insufficient payment");
 
+    // save a timestamp of the currentParams for retroactive fee calculation
+    _updateCheckpoints(msg.sender, getCurrentPrice(), newSubscriptionPool);
+
     // reap fees for creator
     creatorFees += fees;
 
     // purchase tokens -------
-    // save a timestamp of the currentParams for retroactive fee calculation
-    _updatePriceParam(getCurrentPrice());
     _balances[msg.sender] = _balances[msg.sender] + amount;
     supply = supply + amount;
-    // tokens have been bought, params have changed
-    _updateCheckpoint(msg.sender, newSubscriptionPool);
-
+    
     //TODO: emit new subscription Pool
     emit Trade(msg.sender, sharesSubject, true, amount, price, supply + amount);
   }
@@ -137,16 +136,19 @@ abstract contract SubscriptionKeys is SubscriptionPoolTracker {
     uint256 price = getPrice(supply - amount, amount);
     require(_balances[msg.sender] >= amount, "Insufficient shares");
 
+    uint256 currentPrice = getCurrentPrice();
     uint256 traderPoolRemaining;
     uint256 fees;
     (traderPoolRemaining, fees) = _getSubscriptionPoolRemaining(
       msg.sender,
       _balances[msg.sender],
-      getCurrentPrice()
+      currentPrice
+      
     );
+    _updateCheckpoints(msg.sender, currentPrice,  traderPoolRemaining);
+
     _balances[msg.sender] = _balances[msg.sender] - amount;
     supply = supply - amount;
-    _updateCheckpoint(msg.sender, traderPoolRemaining);
     // reap fees for creator
     creatorFees += fees;
 
@@ -173,12 +175,13 @@ abstract contract SubscriptionKeys is SubscriptionPoolTracker {
     // TODO
   }
 
-  function withdrawAccumulatedFees() public {
+  function withdrawDeposit() public {
     uint256 pool = getSubscriptionPoolRemaining(msg.sender);
     require(pool > 0, "Insufficient pool");
     (bool success, ) = msg.sender.call{value: pool}("");
     require(success, "Unable to send funds");
-    _updateCheckpoint(msg.sender, 0);
+    _updateTraderPool(msg.sender, 0);
     creatorFees = 0;
   }
+
 }

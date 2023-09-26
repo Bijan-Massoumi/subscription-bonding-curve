@@ -43,7 +43,7 @@ export interface ShareSampleInterface extends utils.Interface {
     "getTaxPrice(uint256)": FunctionFragment;
     "increaseSubscriptionPool(uint256,uint256)": FunctionFragment;
     "sellShares(uint256)": FunctionFragment;
-    "withdrawAccumulatedFees()": FunctionFragment;
+    "withdrawDeposit()": FunctionFragment;
   };
 
   getFunction(
@@ -62,7 +62,7 @@ export interface ShareSampleInterface extends utils.Interface {
       | "getTaxPrice"
       | "increaseSubscriptionPool"
       | "sellShares"
-      | "withdrawAccumulatedFees"
+      | "withdrawDeposit"
   ): FunctionFragment;
 
   encodeFunctionData(functionFragment: "balanceOf", values: [string]): string;
@@ -116,7 +116,7 @@ export interface ShareSampleInterface extends utils.Interface {
     values: [BigNumberish]
   ): string;
   encodeFunctionData(
-    functionFragment: "withdrawAccumulatedFees",
+    functionFragment: "withdrawDeposit",
     values?: undefined
   ): string;
 
@@ -162,12 +162,12 @@ export interface ShareSampleInterface extends utils.Interface {
   ): Result;
   decodeFunctionResult(functionFragment: "sellShares", data: BytesLike): Result;
   decodeFunctionResult(
-    functionFragment: "withdrawAccumulatedFees",
+    functionFragment: "withdrawDeposit",
     data: BytesLike
   ): Result;
 
   events: {
-    "FeeCollected(uint256,uint256,uint256,uint256)": EventFragment;
+    "FeeCollected(uint256,uint256,uint256)": EventFragment;
     "Trade(address,address,bool,uint256,uint256,uint256)": EventFragment;
   };
 
@@ -176,13 +176,12 @@ export interface ShareSampleInterface extends utils.Interface {
 }
 
 export interface FeeCollectedEventObject {
-  tokenId: BigNumber;
   feeCollected: BigNumber;
   subscriptionPoolRemaining: BigNumber;
   liquidationStartedAt: BigNumber;
 }
 export type FeeCollectedEvent = TypedEvent<
-  [BigNumber, BigNumber, BigNumber, BigNumber],
+  [BigNumber, BigNumber, BigNumber],
   FeeCollectedEventObject
 >;
 
@@ -288,7 +287,7 @@ export interface ShareSample extends BaseContract {
       overrides?: PayableOverrides & { from?: string }
     ): Promise<ContractTransaction>;
 
-    withdrawAccumulatedFees(
+    withdrawDeposit(
       overrides?: Overrides & { from?: string }
     ): Promise<ContractTransaction>;
   };
@@ -351,7 +350,7 @@ export interface ShareSample extends BaseContract {
     overrides?: PayableOverrides & { from?: string }
   ): Promise<ContractTransaction>;
 
-  withdrawAccumulatedFees(
+  withdrawDeposit(
     overrides?: Overrides & { from?: string }
   ): Promise<ContractTransaction>;
 
@@ -408,18 +407,16 @@ export interface ShareSample extends BaseContract {
 
     sellShares(amount: BigNumberish, overrides?: CallOverrides): Promise<void>;
 
-    withdrawAccumulatedFees(overrides?: CallOverrides): Promise<void>;
+    withdrawDeposit(overrides?: CallOverrides): Promise<void>;
   };
 
   filters: {
-    "FeeCollected(uint256,uint256,uint256,uint256)"(
-      tokenId?: null,
+    "FeeCollected(uint256,uint256,uint256)"(
       feeCollected?: null,
       subscriptionPoolRemaining?: null,
       liquidationStartedAt?: null
     ): FeeCollectedEventFilter;
     FeeCollected(
-      tokenId?: null,
       feeCollected?: null,
       subscriptionPoolRemaining?: null,
       liquidationStartedAt?: null
@@ -502,7 +499,7 @@ export interface ShareSample extends BaseContract {
       overrides?: PayableOverrides & { from?: string }
     ): Promise<BigNumber>;
 
-    withdrawAccumulatedFees(
+    withdrawDeposit(
       overrides?: Overrides & { from?: string }
     ): Promise<BigNumber>;
   };
@@ -569,7 +566,7 @@ export interface ShareSample extends BaseContract {
       overrides?: PayableOverrides & { from?: string }
     ): Promise<PopulatedTransaction>;
 
-    withdrawAccumulatedFees(
+    withdrawDeposit(
       overrides?: Overrides & { from?: string }
     ): Promise<PopulatedTransaction>;
   };
