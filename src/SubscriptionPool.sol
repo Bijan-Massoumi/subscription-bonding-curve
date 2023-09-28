@@ -5,7 +5,7 @@ import "./SafUtils.sol";
 import "./ISubscriptionPoolErrors.sol";
 import "./KeyFactory.sol";
 import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
-import "@openzeppelin/contracts/utils/structs/DoubleEndedQueue.sol";
+import "./utils/CircularSetDequeue.sol";
 import "./SubscriptionKeys.sol";
 
 struct SubscriptionPoolCheckpoint {
@@ -27,6 +27,7 @@ contract SubscriptionPool is ISubscriptionPoolErrors {
   );
 
   using EnumerableSet for EnumerableSet.AddressSet;
+  using CircularSetDequeue for CircularSetDequeue.Bytes32Dequeue;
 
   mapping(address trader => SubscriptionPoolCheckpoint checkpoint)
     internal _subscriptionCheckpoints;
@@ -36,7 +37,8 @@ contract SubscriptionPool is ISubscriptionPoolErrors {
     internal _lastTraderIndexByContract;
   mapping(address trader => EnumerableSet.AddressSet set) internal hasKeyFor;
   mapping(address => uint256) internal _subscriptionRateByContract;
-  DoubleEndedQueue.Bytes32Deque queue;
+  mapping(address keyContract => CircularSetDequeue.Bytes32Dequeue)
+    internal queues;
 
   address factoryContract;
 
@@ -191,11 +193,11 @@ contract SubscriptionPool is ISubscriptionPoolErrors {
       uint256 balance = SubscriptionKeys(keyContract).balanceOf(trader);
       uint256 price = SubscriptionKeys(keyContract).getCurrentPrice();
       feesToCollect += _calculateFees(
-        owner,
         price,
         checkpoint.lastModifiedAt,
         balance,
-        _paramChangesByContract[keyContract]
+        _paramChangesByContract[keyContract],
+        _lastTraderIndexByContract[keyContract][trader]
       );
       if (feesToCollect >= checkpoint.subscriptionPoolRemaining) {
         break;
@@ -212,16 +214,15 @@ contract SubscriptionPool is ISubscriptionPoolErrors {
   }
 
   function _calculateFees(
-    address trader,
     uint256 currentPrice,
     uint256 memory lastCheckpointAt,
     uint256 balance,
-    ParamChange[] memory paramChanges
+    ParamChange[] memory paramChanges,
+    uint256 startIndex
   ) internal view returns (uint256) {
     uint256 totalFee;
     uint256 prevIntervalFee;
     uint256 startTime = lastCheckpointAt;
-    uint256 startIndex = _lastTraderIndexByContract[trader]; // Start from the last index that affected the trader
     for (uint256 i = startIndex; i < paramChanges.length; i++) {
       ParamChange memory pc = paramChanges[i];
       if (pc.timestamp > startTime) {
@@ -251,11 +252,33 @@ contract SubscriptionPool is ISubscriptionPoolErrors {
     return totalFee;
   }
 
+  function updateLRUCheckpoint() external returns (uint256 fee) {
+    require(
+      KeyFactory(factoryAddress).isValidDeployment(msg.sender),
+      "Invalid artist contract"
+    );
+
+    address keyContract = msg.sender;
+
+    CircularSetDequeue.Bytes32Dequeue storage queue = queues[keyContract];
+    address trader = queue.pop(keyContract);
+    if (trader == address(0)) {
+      return;
+    }
+
+    (uint256 poolRemaining, uint256 fee) = getSubscriptionPoolRemaining(trader);
+    _updateTraderPool(trader, poolRemaining);
+    _lastTraderIndexByContract[keyContract][trader] = changes.length > 0
+      ? changes.length - 1
+      : 0;
+
+    return fee;
+  }
+
   function updatePoolCheckpoints(
     address trader,
     uint256 newSubPool,
-    uint256 price,
-    uint256 amount
+    uint256 price
   ) external {
     require(
       KeyFactory(factoryAddress).isValidDeployment(msg.sender),
@@ -264,21 +287,17 @@ contract SubscriptionPool is ISubscriptionPoolErrors {
 
     // update pool checkpoint
     _updateTraderPool(trader, newSubPool);
-
-    queue.pushBack(bytes32(uint256(trader)));
-
     // update price checkpoint
-    ParamChange[] changes = _paramChangesByContract[msg.sender];
+    ParamChange[] storage changes = _paramChangesByContract[msg.sender];
     changes.push(
       ParamChange({
         timestamp: block.timestamp,
-        priceAtTime: currPrice,
+        priceAtTime: price,
         rateAtTime: subscriptionRate
       })
     );
-
-    _lastTraderIndexByContract[msg.sender][trader] = paramChanges.length > 0
-      ? paramChanges.length - 1
+    _lastTraderIndexByContract[msg.sender][trader] = changes.length > 0
+      ? changes.length - 1
       : 0;
   }
 
