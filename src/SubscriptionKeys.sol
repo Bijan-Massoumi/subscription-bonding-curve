@@ -138,6 +138,7 @@ abstract contract SubscriptionKeys is SubscriptionPool {
   }
 
   function sellShares(uint256 amount) public payable {
+    //TODO: implement and fix
     require(supply > amount, "Cannot sell the last share");
     require(amount > 0, "Cannot sell 0 shares");
     uint256 price = getPrice(supply - amount, amount);
