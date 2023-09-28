@@ -4,9 +4,9 @@ pragma solidity ^0.8.18;
 import "./SubscriptionKeys.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
-uint256 constant perc = 15000;
+uint256 constant perc = 1500;
 
-contract ShareSample is SubscriptionKeys {
+contract SubKeys is SubscriptionKeys {
   constructor(
     address _withdrawAddress,
     uint256 _subscriptionRate,
@@ -14,10 +14,12 @@ contract ShareSample is SubscriptionKeys {
   ) SubscriptionKeys(_withdrawAddress, _subscriptionRate, owner) {}
 }
 
-contract ShareSampleFactory is Ownable {
+contract KeyFactory is Ownable {
   address public newShareSample;
   mapping(address => address) public subjectToContract;
+
   address[] public deployedSubjects;
+  mapping(address => bool) public validDeployments;
 
   event ShareSampleCreated(
     address indexed shareSampleAddress,
@@ -41,6 +43,7 @@ contract ShareSampleFactory is Ownable {
     // Update the mapping and the array
     subjectToContract[_sharesSubject] = newShareSample;
     deployedSubjects.push(_sharesSubject);
+    validDeployments[newShareSample] = true;
 
     emit ShareSampleCreated(newShareSample, perc, _sharesSubject);
 
@@ -68,5 +71,11 @@ contract ShareSampleFactory is Ownable {
     address _sharesSubject
   ) external view returns (address) {
     return subjectToContract[_sharesSubject];
+  }
+
+  function isValidDeployment(
+    address contractAddress
+  ) external view returns (bool) {
+    return validDeployments[contractAddress];
   }
 }
