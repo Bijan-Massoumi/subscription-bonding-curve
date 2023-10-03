@@ -2,7 +2,7 @@
 pragma solidity ^0.8.18;
 
 import "./SubscriptionPool.sol";
-import "./SafUtils.sol";
+import "./Utils.sol";
 import "./Common.sol";
 
 struct PriceChange {
@@ -36,14 +36,14 @@ abstract contract SubscriptionKeys {
   // TODO make subscriptinoRate changes work
   // historical prices
   PriceChange[] historicalPriceChanges;
-  uint256[] historicalPriceHashes;
+  bytes32[] historicalPriceHashes;
 
   // price changes over the length of the set period
   PriceChange[] recentPriceChanges;
 
   mapping(address trader => uint256 index) private _traderPriceIndex;
 
-  uint256 period;
+  uint256 period = 43_200;
   uint256 periodLastOccuredAt;
 
   uint256 supply;
@@ -51,21 +51,27 @@ abstract contract SubscriptionKeys {
   address withdrawAddress;
   address keySubject;
   address subPoolContract;
+  address factoryContract;
+
+  // 100% fee rate
+  uint256 internal maxSubscriptionRate = 10000;
 
   constructor(
     address _withdrawAddress,
     uint256 _subscriptionRate,
     address _keySubject,
-    address _subPoolContract
+    address _subPoolContract,
+    address _factoryContract
   ) {
     withdrawAddress = _withdrawAddress;
     keySubject = _keySubject;
     subPoolContract = _subPoolContract;
+    factoryContract = _factoryContract;
 
     // first period has no interest rate on buys
     PriceChange memory newPriceChange = PriceChange({
       price: 0,
-      rate: _subscriptionRate,
+      rate: uint128(_subscriptionRate),
       startTimestamp: uint112(block.timestamp),
       index: 0
     });
@@ -136,16 +142,22 @@ abstract contract SubscriptionKeys {
     ).getSubscriptionPoolCheckpoint(trader);
 
     // collect fees
-    address[] traderContracts = SubscriptionPool(subPoolContract)
-      .getTraderContracts(trader);
+    Common.ContractInfo[] memory traderContracts = SubscriptionPool(
+      subPoolContract
+    ).getTraderContracts(trader);
     uint256 fees = _verifyAndCollectFees(
       traderContracts,
       trader,
-      cp.lastModifiedAt
+      cp.lastModifiedAt,
+      proofs
     );
 
     // confirm that the trader has enough in the deposit for subscription
-    uint256 req = getPoolRequirementForBuy(trader, address(this), amount);
+    uint256 req = SubscriptionPool(subPoolContract).getPoolRequirementForBuy(
+      trader,
+      address(this),
+      amount
+    );
     uint256 additionalDeposit = msg.value - price;
     require(additionalDeposit + cp.deposit > fees, "Insufficient pool");
     uint256 newDeposit = additionalDeposit + cp.deposit - fees;
@@ -237,82 +249,156 @@ abstract contract SubscriptionKeys {
   }
 
   function _verifyAndCollectFees(
-    address[] memory traderContracts,
+    Common.ContractInfo[] memory traderContracts,
     address trader,
-    uint256 lastDepositTime
-  ) internal view {
-    uint256 fee;
-    fee += getFeeOwed(trader, lastDepositTime);
-    _traderPriceIndex[trader] = historicalPriceChanges.length - 1;
+    uint256 lastDepositTime,
+    Proof[] calldata proofs
+  ) internal returns (uint256 _fees) {
+    uint256 fees = 0;
+    bytes32 h;
+
     for (uint256 i = 0; i < traderContracts.length; i++) {
-      address keyContract = traderContracts[i];
-      fee += SubscriptionKey(keyContract).getFeeOwedForKeyContract(
-        traderContracts[i]
+      Common.ContractInfo memory contractInfo = traderContracts[i];
+      if (contractInfo.keyContract == address(this)) {
+        continue;
+      }
+      uint256 feeForContract;
+      (feeForContract, h) = _processContract(
+        contractInfo,
+        trader,
+        lastDepositTime,
+        proofs
+      );
+      fees += feeForContract;
+
+      require(
+        SubscriptionKeys(contractInfo.keyContract).verifyHash(h, trader),
+        "Invalid proof"
       );
     }
+
+    uint256 feeForThis;
+    (feeForThis, h) = _processContractForThis(trader, lastDepositTime, proofs);
+    fees += feeForThis;
+    require(verifyHash(h, trader), "Invalid proof");
+
+    return fees;
+  }
+
+  function _processContract(
+    Common.ContractInfo memory contractInfo,
+    address trader,
+    uint256 lastDepositTime,
+    Proof[] calldata proofs
+  ) internal view returns (uint256 fee, bytes32 h) {
+    bytes32 initialHash = SubscriptionKeys(contractInfo.keyContract)
+      .getStartHash(trader);
+
+    for (uint256 j = 0; j < proofs.length; j++) {
+      if (proofs[j].keyContract == contractInfo.keyContract) {
+        return
+          getFeeWithFinalHash(
+            lastDepositTime,
+            initialHash,
+            proofs[j],
+            contractInfo.balance
+          );
+      }
+    }
+
+    revert("No matching Proof found for keyContract");
+  }
+
+  function _processContractForThis(
+    address trader,
+    uint256 lastDepositTime,
+    Proof[] calldata proofs
+  ) internal view returns (uint256 fee, bytes32 h) {
+    bytes32 initialHash = getStartHash(trader);
+
+    for (uint256 j = 0; j < proofs.length; j++) {
+      if (proofs[j].keyContract == address(this)) {
+        return
+          getFeeWithFinalHash(
+            lastDepositTime,
+            initialHash,
+            proofs[j],
+            balanceOf(trader)
+          );
+      }
+    }
+
+    revert("No matching Proof found for address(this)");
   }
 
   // ------------ fee calculation methods ----------------
 
-  function getFeeOwed(
-    address trader,
-    uint256 lastCheckpointAt
-  ) internal returns (uint256) {
-    uint256 balance = balanceOf(trader);
-
-    uint256 endIndex = historicalPriceChanges.length - 1;
-    uint256 startIndex = _traderPriceIndex[trader];
-    require(startIndex <= endIndex, "Invalid index");
-
-    uint256 lastTimestamp;
-    uint256 lastPrice;
-    uint256 lastRate;
+  function getFeeWithFinalHash(
+    uint256 lastCheckpointAt,
+    bytes32 initialHash,
+    Proof calldata proof,
+    uint256 balance
+  ) internal view returns (uint256 fees, bytes32 h) {
+    PriceChange[] calldata pastPrices = proof.pcs;
+    bytes32 currentHash = initialHash;
+    uint256 endIndex = pastPrices.length - 1;
     uint256 totalFee = 0;
-    for (uint256 i = startIndex; i < endIndex; i++) {
-      nextTimestamp = historicalPriceChanges[i + 1].startTimestamp;
-      if (lastCheckpoint > nextTimestamp) {
+    for (uint256 i = 0; i <= endIndex; i++) {
+      // Update the hash chain
+      currentHash = keccak256(abi.encode(pastPrices[i], currentHash));
+
+      uint256 nextTimestamp = i < endIndex
+        ? pastPrices[i + 1].startTimestamp
+        : block.timestamp;
+      if (lastCheckpointAt > nextTimestamp) {
         continue;
       }
 
-      lastTimestamp = historicalPriceChanges[i].startTimestamp;
-      lastPrice = historicalPriceChanges[i].price;
-      lastRate = historicalPriceChanges[i].rate;
-
+      uint256 lastTimestamp = pastPrices[i].startTimestamp;
       uint256 startInterestAt = lastCheckpointAt > lastTimestamp &&
         lastCheckpointAt <= nextTimestamp
         ? lastCheckpointAt
         : lastTimestamp;
-      totalFee += SafUtils._calculateFeeBetweenTimes(
-        balance * lastPrice,
-        lastRate,
+
+      totalFee += Utils._calculateFeeBetweenTimes(
+        balance * pastPrices[i].price,
+        pastPrices[i].rate,
         startInterestAt,
         nextTimestamp
       );
     }
 
-    lastTimestamp = historicalPriceChanges[endIndex].startTimestamp;
-    uint256 startInterestAt = lastCheckpointAt > lastTimestamp
-      ? lastCheckpointAt
-      : lastTimestamp;
-    totalFee += SafUtils._calculateFeeBetweenTimes(
-      balance * lastPrice,
-      lastRate,
-      startInterestAt,
-      block.timestamp
-    );
-
-    return totalFee;
+    return (totalFee, currentHash);
   }
 
-  function getFeeOwedForKeyContract(address trader) external returns (uint256) {
+  function verifyHash(bytes32 h, address trader) public returns (bool) {
     require(
       KeyFactory(factoryContract).isValidDeployment(msg.sender),
       "Invalid artist contract"
     );
 
-    uint256 fee = getFeeOwed(trader);
-    _traderPriceIndex[trader] = historicalPriceChanges.length - 1;
-    return fee;
+    bool valid = historicalPriceHashes[historicalPriceHashes.length - 1] == h;
+    if (valid) {
+      _traderPriceIndex[trader] = historicalPriceChanges.length - 1;
+      return true;
+    }
+
+    return false;
+  }
+
+  function getStartHash(address trader) public view returns (bytes32) {
+    return historicalPriceHashes[getLastTraderPriceIndex(trader)];
+  }
+
+  function getLastTraderPriceIndex(
+    address trader
+  ) public view returns (uint256) {
+    uint256 idx = _traderPriceIndex[trader];
+    if (idx == 0) {
+      return historicalPriceChanges.length - 1;
+    }
+
+    return idx;
   }
 
   // External functions ------------------------------------------------------
@@ -324,12 +410,14 @@ abstract contract SubscriptionKeys {
     // TODO
   }
 
+  // TODO redo this
   function withdrawDeposit() public {
-    uint256 pool = getSubscriptionPoolRemaining(msg.sender);
-    require(pool > 0, "Insufficient pool");
-    (bool success, ) = msg.sender.call{value: pool}("");
-    require(success, "Unable to send funds");
-    _updateTraderPool(msg.sender, 0);
-    creatorFees = 0;
+    // uint256 pool = SubscriptionPool(subPoolContract)
+    //   .getSubscriptionPoolRemaining(msg.sender);
+    // require(pool > 0, "Insufficient pool");
+    // (bool success, ) = msg.sender.call{value: pool}("");
+    // require(success, "Unable to send funds");
+    // SubscriptionPool(subPoolContract).updateTraderInfo(msg.sender, 0, 0);
+    // creatorFees = 0;
   }
 }

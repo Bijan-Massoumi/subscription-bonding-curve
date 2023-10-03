@@ -10,12 +10,23 @@ contract SubKeys is SubscriptionKeys {
   constructor(
     address _withdrawAddress,
     uint256 _subscriptionRate,
-    address owner
-  ) SubscriptionKeys(_withdrawAddress, _subscriptionRate, owner) {}
+    address _subject,
+    address _subPoolContract,
+    address _factoryContract
+  )
+    SubscriptionKeys(
+      _withdrawAddress,
+      _subscriptionRate,
+      _subject,
+      _subPoolContract,
+      _factoryContract
+    )
+  {}
 }
 
 contract KeyFactory is Ownable {
-  address public newShareSample;
+  address subPoolContract;
+  address public newSubKeys;
   mapping(address => address) public subjectToContract;
 
   address[] public deployedSubjects;
@@ -27,7 +38,11 @@ contract KeyFactory is Ownable {
     address indexed sharesSubject
   );
 
-  function createShareSample(
+  constructor(address _subPoolContract) {
+    subPoolContract = _subPoolContract;
+  }
+
+  function createSubKeyContract(
     address _sharesSubject
   ) external onlyOwner returns (address) {
     // Require that a contract hasn’t been deployed for this _sharesSubject before
@@ -36,18 +51,24 @@ contract KeyFactory is Ownable {
       "Contract already deployed for this sharesSubject"
     );
 
-    newShareSample = address(
-      new ShareSample(_sharesSubject, perc, _sharesSubject)
+    newSubKeys = address(
+      new SubKeys(
+        _sharesSubject,
+        perc,
+        _sharesSubject,
+        subPoolContract,
+        address(this)
+      )
     );
 
     // Update the mapping and the array
-    subjectToContract[_sharesSubject] = newShareSample;
+    subjectToContract[_sharesSubject] = newSubKeys;
     deployedSubjects.push(_sharesSubject);
-    validDeployments[newShareSample] = true;
+    validDeployments[newSubKeys] = true;
 
-    emit ShareSampleCreated(newShareSample, perc, _sharesSubject);
+    emit ShareSampleCreated(newSubKeys, perc, _sharesSubject);
 
-    return newShareSample;
+    return newSubKeys;
   }
 
   function getDeployedContracts()

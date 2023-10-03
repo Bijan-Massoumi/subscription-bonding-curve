@@ -6,4 +6,9 @@ library Common {
     uint256 deposit;
     uint256 lastModifiedAt;
   }
+
+  struct ContractInfo {
+    address keyContract;
+    uint256 balance;
+  }
 }
