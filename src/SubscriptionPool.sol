@@ -4,42 +4,22 @@ pragma solidity ^0.8.18;
 import "./SafUtils.sol";
 import "./ISubscriptionPoolErrors.sol";
 import "./KeyFactory.sol";
+import "./Common.sol";
 import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
-import "./utils/CircularSetDequeue.sol";
 import "./SubscriptionKeys.sol";
-
-struct SubscriptionPoolCheckpoint {
-  uint256 subscriptionPoolRemaining;
-  uint256 lastModifiedAt;
-}
-
-struct ParamChange {
-  uint256 timestamp;
-  uint256 priceAtTime;
-  uint256 rateAtTime;
-}
 
 contract SubscriptionPool is ISubscriptionPoolErrors {
   event FeeCollected(
     uint256 feeCollected,
-    uint256 subscriptionPoolRemaining,
+    uint256 deposit,
     uint256 liquidationStartedAt
   );
 
   using EnumerableSet for EnumerableSet.AddressSet;
-  using CircularSetDequeue for CircularSetDequeue.Bytes32Dequeue;
 
-  mapping(address trader => SubscriptionPoolCheckpoint checkpoint)
+  mapping(address trader => Common.SubscriptionPoolCheckpoint checkpoint)
     internal _subscriptionCheckpoints;
-  mapping(address keyContract => ParamChange[] paramChanges)
-    internal _paramChangesByContract;
-  mapping(address keyContract => mapping(address trader => uint256 index))
-    internal _lastTraderIndexByContract;
-  mapping(address trader => EnumerableSet.AddressSet set) internal hasKeyFor;
-  mapping(address => uint256) internal _subscriptionRateByContract;
-  mapping(address keyContract => CircularSetDequeue.Bytes32Dequeue)
-    internal queues;
-
+  mapping(address trader => EnumerableSet.AddressSet set) internal _hasKeyFor;
   address factoryContract;
 
   // min percentage (10%) of total stated price that
@@ -57,6 +37,38 @@ contract SubscriptionPool is ISubscriptionPoolErrors {
 
   function _setMinimumPoolRatio(uint256 newMinimumPoolRatio) internal {
     minimumPoolRatio = newMinimumPoolRatio;
+  }
+
+  function getTraderContracts(
+    address trader
+  ) external view returns (address[] memory) {
+    EnumerableSet.AddressSet memory contractSet = hasKeyFor[trader];
+    uint256 length = contractSet.length();
+    address[] memory contracts = new address[](length);
+    for (uint256 i = 0; i < length; i++) {
+      contracts[i] = contractSet.at(i);
+    }
+    return contracts;
+  }
+
+  function updateTraderInfo(
+    address trader,
+    uint256 newDeposit,
+    uint256 newBal
+  ) external {
+    require(
+      KeyFactory(factoryAddress).isValidDeployment(msg.sender),
+      "Invalid artist contract"
+    );
+
+    // update pool checkpoint
+    _updateTraderPool(trader, newDeposit);
+
+    if (newBal == 0) {
+      hasKeyFor[trader].remove(trader);
+    } else {
+      hasKeyFor[trader].add(trader);
+    }
   }
 
   function getCurrentPoolRequirement(
@@ -97,26 +109,10 @@ contract SubscriptionPool is ISubscriptionPoolErrors {
       "Invalid artist contract"
     );
 
-    // Initialize the total requirement to 0
-    uint256 totalRequirement = 0;
-
-    // Iterate through the set of keyContracts for the trader
-    EnumerableSet.AddressSet memory contractSet = hasKeyFor[trader];
-    uint256 length = contractSet.length();
-    for (uint256 i = 0; i < length; i++) {
-      address keyContract = contractSet.at(i);
-      if (keyContract == buyContract) {
-        continue;
-      }
-
-      // Calculate the requirement for the current contract
-      uint256 balance = SubscriptionKeys(keyContract).balanceOf(trader);
-      uint256 price = SubscriptionKeys(keyContract).getCurrentPrice();
-      uint256 requirement = (price * balance * minimumPoolRatio) / 10000;
-
-      // Add the requirement to the total requirement
-      totalRequirement += requirement;
-    }
+    uint256 totalRequirement = _getUnchangingPoolRequirement(
+      trader,
+      buyContract
+    );
 
     // For the calling contract, calculate the requirement after the buy
     uint256 newPrice = SubscriptionKeys(buyContract).getBuyPrice(amount);
@@ -141,27 +137,10 @@ contract SubscriptionPool is ISubscriptionPoolErrors {
       "Invalid artist contract"
     );
 
-    // Initialize the total requirement to 0
-    uint256 totalRequirement = 0;
-
-    // Iterate through the set of keyContracts for the trader
-    EnumerableSet.AddressSet memory contractSet = hasKeyFor[trader];
-    uint256 length = contractSet.length();
-    for (uint256 i = 0; i < length; i++) {
-      address keyContract = contractSet.at(i);
-      if (keyContract == sellContract) {
-        continue;
-      }
-
-      // Calculate the requirement for the current contract
-      uint256 balance = SubscriptionKeys(keyContract).balanceOf(trader);
-      uint256 price = SubscriptionKeys(keyContract).getCurrentPrice();
-      uint256 requirement = (price * balance * minimumPoolRatio) / 10000;
-
-      // Add the requirement to the total requirement
-      totalRequirement += requirement;
-    }
-
+    uint256 totalRequirement = _getUnchangingPoolRequirement(
+      trader,
+      sellContract
+    );
     // For the calling contract, calculate the requirement after the buy
     uint256 newPrice = SubscriptionKeys(sellContract).getSellPrice(amount);
     uint256 balance = SubscriptionKeys(sellContract).balanceOf(trader);
@@ -177,149 +156,42 @@ contract SubscriptionPool is ISubscriptionPoolErrors {
     return totalRequirement;
   }
 
-  function getSubscriptionPoolRemaining(
-    address trader
-  ) public view returns (uint256 poolRemaining, uint256 fees) {
-    SubscriptionPoolCheckpoint memory checkpoint = _subscriptionCheckpoints[
-      trader
-    ];
-
+  function _getUnchangingPoolRequirement(
+    address trader,
+    address changingContract
+  ) internal view returns (uint256) {
+    // Initialize the total requirement to 0
+    uint256 totalRequirement = 0;
     // Iterate through the set of keyContracts for the trader
-    uint256 feesToCollect;
     EnumerableSet.AddressSet memory contractSet = hasKeyFor[trader];
     uint256 length = contractSet.length();
     for (uint256 i = 0; i < length; i++) {
       address keyContract = contractSet.at(i);
+      if (keyContract == changingContract) {
+        continue;
+      }
+
+      // Calculate the requirement for the current contract
       uint256 balance = SubscriptionKeys(keyContract).balanceOf(trader);
       uint256 price = SubscriptionKeys(keyContract).getCurrentPrice();
-      feesToCollect += _calculateFees(
-        price,
-        checkpoint.lastModifiedAt,
-        balance,
-        _paramChangesByContract[keyContract],
-        _lastTraderIndexByContract[keyContract][trader]
-      );
-      if (feesToCollect >= checkpoint.subscriptionPoolRemaining) {
-        break;
-      }
+      uint256 requirement = (price * balance * minimumPoolRatio) / 10000;
+
+      // Add the requirement to the total requirement
+      totalRequirement += requirement;
     }
 
-    if (feesToCollect >= checkpoint.subscriptionPoolRemaining) {
-      return (0, feesToCollect);
-    }
-    return (
-      checkpoint.subscriptionPoolRemaining - feesToCollect,
-      feesToCollect
-    );
+    return totalRequirement;
   }
 
-  function _calculateFees(
-    uint256 currentPrice,
-    uint256 memory lastCheckpointAt,
-    uint256 balance,
-    ParamChange[] memory paramChanges,
-    uint256 startIndex
-  ) internal view returns (uint256) {
-    uint256 totalFee;
-    uint256 prevIntervalFee;
-    uint256 startTime = lastCheckpointAt;
-    for (uint256 i = startIndex; i < paramChanges.length; i++) {
-      ParamChange memory pc = paramChanges[i];
-      if (pc.timestamp > startTime) {
-        uint256 intervalFee = balance *
-          SafUtils._calculateFeeBetweenTimes(
-            pc.priceAtTime,
-            startTime,
-            pc.timestamp,
-            pc.rateAtTime
-          );
-        totalFee += intervalFee;
-        startTime = pc.timestamp;
-        prevIntervalFee += intervalFee;
-      }
-    }
-
-    totalFee +=
-      balance *
-      SafUtils._calculateFeeBetweenTimes(
-        currentPrice,
-        startTime,
-        block.timestamp,
-        subscriptionRate
-      );
-    totalFee += intervalFee;
-
-    return totalFee;
-  }
-
-  function updateLRUCheckpoint() external returns (uint256 fee) {
-    require(
-      KeyFactory(factoryAddress).isValidDeployment(msg.sender),
-      "Invalid artist contract"
-    );
-
-    address keyContract = msg.sender;
-
-    CircularSetDequeue.Bytes32Dequeue storage queue = queues[keyContract];
-    address trader = queue.pop(keyContract);
-    if (trader == address(0)) {
-      return;
-    }
-
-    (uint256 poolRemaining, uint256 fee) = getSubscriptionPoolRemaining(trader);
-    _updateTraderPool(trader, poolRemaining);
-    _lastTraderIndexByContract[keyContract][trader] = changes.length > 0
-      ? changes.length - 1
-      : 0;
-
-    return fee;
-  }
-
-  function updatePoolCheckpoints(
-    address trader,
-    uint256 newSubPool,
-    uint256 price
-  ) external {
-    require(
-      KeyFactory(factoryAddress).isValidDeployment(msg.sender),
-      "Invalid artist contract"
-    );
-
-    // update pool checkpoint
-    _updateTraderPool(trader, newSubPool);
-    // update price checkpoint
-    ParamChange[] storage changes = _paramChangesByContract[msg.sender];
-    changes.push(
-      ParamChange({
-        timestamp: block.timestamp,
-        priceAtTime: price,
-        rateAtTime: subscriptionRate
-      })
-    );
-    _lastTraderIndexByContract[msg.sender][trader] = changes.length > 0
-      ? changes.length - 1
-      : 0;
+  function getSubscriptionPoolCheckpoint(
+    address trader
+  ) public view returns (Common.SubscriptionPoolCheckpoint) {
+    return _subscriptionCheckpoints[trader];
   }
 
   function _updateTraderPool(address trader, uint256 newSubPool) internal {
     SubscriptionPoolCheckpoint storage cp = _subscriptionCheckpoints[trader];
-    cp.subscriptionPoolRemaining = newSubPool;
+    cp.deposit = newSubPool;
     cp.lastModifiedAt = block.timestamp;
-  }
-
-  function _setSubscriptionRate(uint256 newSubscriptionRate) internal {
-    uint256 currentPrice = paramChanges.length > 0
-      ? paramChanges[paramChanges.length - 1].priceAtTime
-      : 0; // Set a default value, for example, 0, if paramChanges is empty
-
-    paramChanges.push(
-      ParamChange({
-        timestamp: block.timestamp,
-        priceAtTime: currentPrice,
-        rateAtTime: subscriptionRate
-      })
-    );
-
-    subscriptionRate = newSubscriptionRate;
   }
 }
