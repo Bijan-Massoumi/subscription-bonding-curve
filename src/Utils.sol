@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.18;
 
+import "forge-std/console.sol";
+
 library Utils {
   uint256 constant secondsInYear = 365 days;
 

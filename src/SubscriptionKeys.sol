@@ -4,6 +4,7 @@ pragma solidity ^0.8.18;
 import "./SubscriptionPool.sol";
 import "./Utils.sol";
 import "./Common.sol";
+import "forge-std/console.sol";
 
 struct PriceChange {
   uint256 price;
@@ -18,7 +19,7 @@ struct Proof {
 }
 
 // TODO add method that liquidates all users, it should give a gas refund, it should revert if there are no users to liquidate
-abstract contract SubscriptionKeys {
+contract SubscriptionKeys {
   event Trade(
     address trader,
     address subject,
@@ -47,26 +48,25 @@ abstract contract SubscriptionKeys {
   uint256 periodLastOccuredAt;
 
   uint256 supply;
-  uint256 creatorFees;
-  address withdrawAddress;
   address keySubject;
   address subPoolContract;
   address factoryContract;
+  uint256 groupId;
 
   // 100% fee rate
   uint256 internal maxSubscriptionRate = 10000;
 
   constructor(
-    address _withdrawAddress,
     uint256 _subscriptionRate,
     address _keySubject,
     address _subPoolContract,
-    address _factoryContract
+    address _factoryContract,
+    uint256 _groupId
   ) {
-    withdrawAddress = _withdrawAddress;
     keySubject = _keySubject;
     subPoolContract = _subPoolContract;
     factoryContract = _factoryContract;
+    groupId = _groupId;
 
     // first period has no interest rate on buys
     PriceChange memory newPriceChange = PriceChange({
@@ -78,7 +78,7 @@ abstract contract SubscriptionKeys {
 
     // initialize genesis price change
     historicalPriceChanges.push(newPriceChange);
-    bytes32 h = keccak256(abi.encode(newPriceChange));
+    bytes32 h = keccak256(abi.encode(newPriceChange, bytes32(0)));
     historicalPriceHashes.push(h);
   }
 
@@ -101,7 +101,7 @@ abstract contract SubscriptionKeys {
     return (summation * 1 ether) / 16000;
   }
 
-  function getShareSubject() public view returns (address) {
+  function getKeySubject() public view returns (address) {
     return keySubject;
   }
 
@@ -130,8 +130,8 @@ abstract contract SubscriptionKeys {
   }
 
   // TODO is there a way to liquidate people before we buy to ensure the best price?
-  function buyShares(uint256 amount, Proof[] calldata proofs) public payable {
-    require(amount > 0, "Cannot buy 0 shares");
+  function buyKeys(uint256 amount, Proof[] calldata proofs) public payable {
+    require(amount > 0, "Cannot buy 0 keys");
     uint256 price = getPrice(supply, amount);
     require(msg.value >= price, "Inusfficient nft price");
     address trader = msg.sender;
@@ -139,12 +139,12 @@ abstract contract SubscriptionKeys {
     // fetch last subscription deposit checkpoint
     Common.SubscriptionPoolCheckpoint memory cp = SubscriptionPool(
       subPoolContract
-    ).getSubscriptionPoolCheckpoint(trader);
+    ).getSubscriptionPoolCheckpoint(trader, groupId);
 
     // collect fees
     Common.ContractInfo[] memory traderContracts = SubscriptionPool(
       subPoolContract
-    ).getTraderContracts(trader);
+    ).getTraderContracts(trader, groupId);
     uint256 fees = _verifyAndCollectFees(
       traderContracts,
       trader,
@@ -155,6 +155,7 @@ abstract contract SubscriptionKeys {
     // confirm that the trader has enough in the deposit for subscription
     uint256 req = SubscriptionPool(subPoolContract).getPoolRequirementForBuy(
       trader,
+      groupId,
       address(this),
       amount
     );
@@ -171,23 +172,27 @@ abstract contract SubscriptionKeys {
     // update checkpoints
     SubscriptionPool(subPoolContract).updateTraderInfo(
       trader,
+      groupId,
       newDeposit,
       newBal
     );
     _updatePriceOracle(price);
+
+    // send fees to keySubject
+    (bool success, ) = keySubject.call{value: fees}("");
   }
 
-  // TODO
-  function sellShares(uint256 amount) public payable {
-    // require(supply > amount, "Cannot sell the last share");
-    // require(amount > 0, "Cannot sell 0 shares");
-    // uint256 price = getPrice(supply - amount, amount);
-    // require(_balances[msg.sender] >= amount, "Insufficient shares");
-    // _balances[msg.sender] = _balances[msg.sender] - amount;
-    // supply = supply - amount;
-    // creatorFees += fees;
-    // (bool success1, ) = msg.sender.call{value: price}("");
-    // require(success1, "Unable to send funds");
+  function sellKeys(uint256 amount) public {
+    require(supply > amount, "Cannot sell the last share");
+    require(amount > 0, "Cannot sell 0 shares");
+    uint256 price = getPrice(supply - amount, amount);
+    require(_balances[msg.sender] >= amount, "Insufficient shares");
+
+    _balances[msg.sender] = _balances[msg.sender] - amount;
+    supply = supply - amount;
+
+    (bool success1, ) = msg.sender.call{value: price}("");
+    require(success1, "Unable to send funds");
   }
 
   function _updatePriceOracle(uint256 newPrice) internal {
@@ -255,32 +260,23 @@ abstract contract SubscriptionKeys {
     Proof[] calldata proofs
   ) internal returns (uint256 _fees) {
     uint256 fees = 0;
-    bytes32 h;
-
     for (uint256 i = 0; i < traderContracts.length; i++) {
       Common.ContractInfo memory contractInfo = traderContracts[i];
       if (contractInfo.keyContract == address(this)) {
         continue;
       }
-      uint256 feeForContract;
-      (feeForContract, h) = _processContract(
+      uint256 feeForContract = _processContract(
         contractInfo,
         trader,
         lastDepositTime,
         proofs
       );
       fees += feeForContract;
-
-      require(
-        SubscriptionKeys(contractInfo.keyContract).verifyHash(h, trader),
-        "Invalid proof"
-      );
     }
 
     uint256 feeForThis;
-    (feeForThis, h) = _processContractForThis(trader, lastDepositTime, proofs);
+    (feeForThis) = _processContractForThis(trader, lastDepositTime, proofs);
     fees += feeForThis;
-    require(verifyHash(h, trader), "Invalid proof");
 
     return fees;
   }
@@ -290,19 +286,27 @@ abstract contract SubscriptionKeys {
     address trader,
     uint256 lastDepositTime,
     Proof[] calldata proofs
-  ) internal view returns (uint256 fee, bytes32 h) {
+  ) internal returns (uint256 _fee) {
     bytes32 initialHash = SubscriptionKeys(contractInfo.keyContract)
       .getStartHash(trader);
 
     for (uint256 j = 0; j < proofs.length; j++) {
       if (proofs[j].keyContract == contractInfo.keyContract) {
-        return
-          getFeeWithFinalHash(
-            lastDepositTime,
-            initialHash,
-            proofs[j],
-            contractInfo.balance
-          );
+        (uint256 fee, bytes32 h) = getFeeWithFinalHash(
+          lastDepositTime,
+          initialHash,
+          proofs[j],
+          contractInfo.balance
+        );
+        require(
+          SubscriptionKeys(contractInfo.keyContract).verifyHashExternal(
+            h,
+            trader
+          ),
+          "Invalid proof"
+        );
+
+        return fee;
       }
     }
 
@@ -313,18 +317,19 @@ abstract contract SubscriptionKeys {
     address trader,
     uint256 lastDepositTime,
     Proof[] calldata proofs
-  ) internal view returns (uint256 fee, bytes32 h) {
+  ) internal returns (uint256 _fee) {
     bytes32 initialHash = getStartHash(trader);
-
     for (uint256 j = 0; j < proofs.length; j++) {
       if (proofs[j].keyContract == address(this)) {
-        return
-          getFeeWithFinalHash(
-            lastDepositTime,
-            initialHash,
-            proofs[j],
-            balanceOf(trader)
-          );
+        (uint256 fee, bytes32 h) = getFeeWithFinalHash(
+          lastDepositTime,
+          initialHash,
+          proofs[j],
+          balanceOf(trader)
+        );
+        require(verifyHash(h, trader), "Invalid proof");
+
+        return fee;
       }
     }
 
@@ -340,13 +345,14 @@ abstract contract SubscriptionKeys {
     uint256 balance
   ) internal view returns (uint256 fees, bytes32 h) {
     PriceChange[] calldata pastPrices = proof.pcs;
+    require(pastPrices.length > 0, "No past prices");
+
     bytes32 currentHash = initialHash;
     uint256 endIndex = pastPrices.length - 1;
     uint256 totalFee = 0;
     for (uint256 i = 0; i <= endIndex; i++) {
       // Update the hash chain
       currentHash = keccak256(abi.encode(pastPrices[i], currentHash));
-
       uint256 nextTimestamp = i < endIndex
         ? pastPrices[i + 1].startTimestamp
         : block.timestamp;
@@ -362,16 +368,19 @@ abstract contract SubscriptionKeys {
 
       totalFee += Utils._calculateFeeBetweenTimes(
         balance * pastPrices[i].price,
-        pastPrices[i].rate,
         startInterestAt,
-        nextTimestamp
+        nextTimestamp,
+        pastPrices[i].rate
       );
     }
 
     return (totalFee, currentHash);
   }
 
-  function verifyHash(bytes32 h, address trader) public returns (bool) {
+  function verifyHashExternal(
+    bytes32 h,
+    address trader
+  ) external returns (bool) {
     require(
       KeyFactory(factoryContract).isValidDeployment(msg.sender),
       "Invalid artist contract"
@@ -386,8 +395,24 @@ abstract contract SubscriptionKeys {
     return false;
   }
 
+  function verifyHash(bytes32 h, address trader) internal returns (bool) {
+    bool valid = historicalPriceHashes[historicalPriceHashes.length - 1] == h;
+    if (valid) {
+      _traderPriceIndex[trader] = historicalPriceChanges.length - 1;
+      return true;
+    }
+
+    return false;
+  }
+
   function getStartHash(address trader) public view returns (bytes32) {
-    return historicalPriceHashes[getLastTraderPriceIndex(trader)];
+    uint256 lastPriceIndex = getLastTraderPriceIndex(trader);
+    if (lastPriceIndex == 0) {
+      return bytes32(0);
+    }
+
+    // get hash right before the traders price change. The prover will hash chain off of this
+    return historicalPriceHashes[getLastTraderPriceIndex(trader) - 1];
   }
 
   function getLastTraderPriceIndex(
@@ -401,7 +426,19 @@ abstract contract SubscriptionKeys {
     return idx;
   }
 
-  // External functions ------------------------------------------------------
+  function getPriceProof(address trader) external view returns (Proof memory) {
+    uint256 startIndex = getLastTraderPriceIndex(trader);
+    uint256 length = historicalPriceChanges.length - startIndex;
+    PriceChange[] memory pc = new PriceChange[](length);
+    for (uint256 i = 0; i < length; i++) {
+      pc[i] = historicalPriceChanges[startIndex + i];
+    }
+
+    return Proof({keyContract: address(this), pcs: pc});
+  }
+
+  // -------------- subscription pool methods ----------------
+
   function increaseSubscriptionPool(uint256 tokenId, uint256 amount) external {
     // TODO
   }

@@ -8,18 +8,18 @@ uint256 constant perc = 1500;
 
 contract SubKeys is SubscriptionKeys {
   constructor(
-    address _withdrawAddress,
     uint256 _subscriptionRate,
     address _subject,
     address _subPoolContract,
-    address _factoryContract
+    address _factoryContract,
+    uint256 _groupId
   )
     SubscriptionKeys(
-      _withdrawAddress,
       _subscriptionRate,
       _subject,
       _subPoolContract,
-      _factoryContract
+      _factoryContract,
+      _groupId
     )
   {}
 }
@@ -27,6 +27,7 @@ contract SubKeys is SubscriptionKeys {
 contract KeyFactory is Ownable {
   address subPoolContract;
   address public newSubKeys;
+  uint256 groupId;
   mapping(address => address) public subjectToContract;
 
   address[] public deployedSubjects;
@@ -40,6 +41,13 @@ contract KeyFactory is Ownable {
 
   constructor(address _subPoolContract) {
     subPoolContract = _subPoolContract;
+    groupId = SubscriptionPool(subPoolContract).addPermissionGroup(
+      "KeyFactory"
+    );
+  }
+
+  function getGroupId() external view returns (uint256) {
+    return groupId;
   }
 
   function createSubKeyContract(
@@ -52,15 +60,13 @@ contract KeyFactory is Ownable {
     );
 
     newSubKeys = address(
-      new SubKeys(
-        _sharesSubject,
-        perc,
-        _sharesSubject,
-        subPoolContract,
-        address(this)
-      )
+      new SubKeys(perc, _sharesSubject, subPoolContract, address(this), groupId)
     );
 
+    SubscriptionPool(subPoolContract).addContractToPermissionGroup(
+      groupId,
+      newSubKeys
+    );
     // Update the mapping and the array
     subjectToContract[_sharesSubject] = newSubKeys;
     deployedSubjects.push(_sharesSubject);

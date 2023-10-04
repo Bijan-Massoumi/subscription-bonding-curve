@@ -63,7 +63,7 @@ export interface SubscriptionKeysInterface extends utils.Interface {
     "getLastTraderPriceIndex(address)": FunctionFragment;
     "getPrice(uint256,uint256)": FunctionFragment;
     "getSellPrice(uint256)": FunctionFragment;
-    "getShareSubject()": FunctionFragment;
+    "getKeySubject()": FunctionFragment;
     "getStartHash(address)": FunctionFragment;
     "getSupply()": FunctionFragment;
     "getTaxPrice(uint256)": FunctionFragment;
@@ -83,7 +83,7 @@ export interface SubscriptionKeysInterface extends utils.Interface {
       | "getLastTraderPriceIndex"
       | "getPrice"
       | "getSellPrice"
-      | "getShareSubject"
+      | "getKeySubject"
       | "getStartHash"
       | "getSupply"
       | "getTaxPrice"
@@ -123,7 +123,7 @@ export interface SubscriptionKeysInterface extends utils.Interface {
     values: [BigNumberish]
   ): string;
   encodeFunctionData(
-    functionFragment: "getShareSubject",
+    functionFragment: "getKeySubject",
     values?: undefined
   ): string;
   encodeFunctionData(
@@ -176,7 +176,7 @@ export interface SubscriptionKeysInterface extends utils.Interface {
     data: BytesLike
   ): Result;
   decodeFunctionResult(
-    functionFragment: "getShareSubject",
+    functionFragment: "getKeySubject",
     data: BytesLike
   ): Result;
   decodeFunctionResult(
@@ -285,7 +285,7 @@ export interface SubscriptionKeys extends BaseContract {
       overrides?: CallOverrides
     ): Promise<[BigNumber]>;
 
-    getShareSubject(overrides?: CallOverrides): Promise<[string]>;
+    getKeySubject(overrides?: CallOverrides): Promise<[string]>;
 
     getStartHash(trader: string, overrides?: CallOverrides): Promise<[string]>;
 
@@ -355,7 +355,7 @@ export interface SubscriptionKeys extends BaseContract {
     overrides?: CallOverrides
   ): Promise<BigNumber>;
 
-  getShareSubject(overrides?: CallOverrides): Promise<string>;
+  getKeySubject(overrides?: CallOverrides): Promise<string>;
 
   getStartHash(trader: string, overrides?: CallOverrides): Promise<string>;
 
@@ -425,7 +425,7 @@ export interface SubscriptionKeys extends BaseContract {
       overrides?: CallOverrides
     ): Promise<BigNumber>;
 
-    getShareSubject(overrides?: CallOverrides): Promise<string>;
+    getKeySubject(overrides?: CallOverrides): Promise<string>;
 
     getStartHash(trader: string, overrides?: CallOverrides): Promise<string>;
 
@@ -510,7 +510,7 @@ export interface SubscriptionKeys extends BaseContract {
       overrides?: CallOverrides
     ): Promise<BigNumber>;
 
-    getShareSubject(overrides?: CallOverrides): Promise<BigNumber>;
+    getKeySubject(overrides?: CallOverrides): Promise<BigNumber>;
 
     getStartHash(trader: string, overrides?: CallOverrides): Promise<BigNumber>;
 
@@ -584,7 +584,7 @@ export interface SubscriptionKeys extends BaseContract {
       overrides?: CallOverrides
     ): Promise<PopulatedTransaction>;
 
-    getShareSubject(overrides?: CallOverrides): Promise<PopulatedTransaction>;
+    getKeySubject(overrides?: CallOverrides): Promise<PopulatedTransaction>;
 
     getStartHash(
       trader: string,

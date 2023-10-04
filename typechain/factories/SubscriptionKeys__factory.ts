@@ -238,7 +238,7 @@ const _abi = [
   },
   {
     inputs: [],
-    name: "getShareSubject",
+    name: "getKeySubject",
     outputs: [
       {
         internalType: "address",
