@@ -4,20 +4,34 @@ pragma solidity ^0.8.18;
 import "./SubscriptionKeys.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
-uint256 constant perc = 15000;
+uint256 constant perc = 1500;
 
-contract ShareSample is SubscriptionKeys {
+contract SubKeys is SubscriptionKeys {
   constructor(
-    address _withdrawAddress,
     uint256 _subscriptionRate,
-    address owner
-  ) SubscriptionKeys(_withdrawAddress, _subscriptionRate, owner) {}
+    address _subject,
+    address _subPoolContract,
+    address _factoryContract,
+    uint256 _groupId
+  )
+    SubscriptionKeys(
+      _subscriptionRate,
+      _subject,
+      _subPoolContract,
+      _factoryContract,
+      _groupId
+    )
+  {}
 }
 
-contract ShareSampleFactory is Ownable {
-  address public newShareSample;
+contract KeyFactory is Ownable {
+  address subPoolContract;
+  address public newSubKeys;
+  uint256 groupId;
   mapping(address => address) public subjectToContract;
+
   address[] public deployedSubjects;
+  mapping(address => bool) public validDeployments;
 
   event ShareSampleCreated(
     address indexed shareSampleAddress,
@@ -25,7 +39,18 @@ contract ShareSampleFactory is Ownable {
     address indexed sharesSubject
   );
 
-  function createShareSample(
+  constructor(address _subPoolContract) {
+    subPoolContract = _subPoolContract;
+    groupId = SubscriptionPool(subPoolContract).addPermissionGroup(
+      "KeyFactory"
+    );
+  }
+
+  function getGroupId() external view returns (uint256) {
+    return groupId;
+  }
+
+  function createSubKeyContract(
     address _sharesSubject
   ) external onlyOwner returns (address) {
     // Require that a contract hasn’t been deployed for this _sharesSubject before
@@ -34,17 +59,22 @@ contract ShareSampleFactory is Ownable {
       "Contract already deployed for this sharesSubject"
     );
 
-    newShareSample = address(
-      new ShareSample(_sharesSubject, perc, _sharesSubject)
+    newSubKeys = address(
+      new SubKeys(perc, _sharesSubject, subPoolContract, address(this), groupId)
     );
 
+    SubscriptionPool(subPoolContract).addContractToPermissionGroup(
+      groupId,
+      newSubKeys
+    );
     // Update the mapping and the array
-    subjectToContract[_sharesSubject] = newShareSample;
+    subjectToContract[_sharesSubject] = newSubKeys;
     deployedSubjects.push(_sharesSubject);
+    validDeployments[newSubKeys] = true;
 
-    emit ShareSampleCreated(newShareSample, perc, _sharesSubject);
+    emit ShareSampleCreated(newSubKeys, perc, _sharesSubject);
 
-    return newShareSample;
+    return newSubKeys;
   }
 
   function getDeployedContracts()
@@ -68,5 +98,11 @@ contract ShareSampleFactory is Ownable {
     address _sharesSubject
   ) external view returns (address) {
     return subjectToContract[_sharesSubject];
+  }
+
+  function isValidDeployment(
+    address contractAddress
+  ) external view returns (bool) {
+    return validDeployments[contractAddress];
   }
 }

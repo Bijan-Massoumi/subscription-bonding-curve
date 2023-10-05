@@ -2,7 +2,7 @@
 pragma solidity ^0.8.18;
 
 /// @title Custom errors for SneakyAuction
-interface ISubscriptionPoolTrackerErrors {
+interface ISubscriptionPoolErrors {
     /// @notice Thrown if invalid price values
     error InvalidAlterPriceValue();
     /// @notice Thrown if invalid subscriptionPool values

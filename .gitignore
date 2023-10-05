@@ -15,3 +15,7 @@ docs/
 
 
 node_modules/
+notes/
+*.txt
+.vscode/
+broadcast/
