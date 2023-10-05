@@ -4,10 +4,10 @@ pragma solidity ^0.8.18;
 
 import "forge-std/Test.sol";
 import "../src/KeyFactory.sol";
-import "./Setup.t.sol";
+import "./utils/IntegratedSetup.t.sol";
 import "forge-std/console.sol";
 
-contract BuyKeys is Setup {
+contract BuyKeysTest is IntegratedSetup {
   function testBalanceChangeAfterBuySale() public {
     vm.deal(owner, 100 ether);
 

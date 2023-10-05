@@ -11,4 +11,11 @@ library Common {
     address keyContract;
     uint256 balance;
   }
+
+  struct PriceChange {
+    uint256 price;
+    uint128 rate;
+    uint112 startTimestamp;
+    uint16 index;
+  }
 }
