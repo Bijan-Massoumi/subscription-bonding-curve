@@ -190,7 +190,8 @@ contract SubscriptionKeys {
 
     uint256 price = getPrice(supply - amount, amount);
     address trader = msg.sender;
-    require(_balances[trader] >= amount, "Insufficient keys");
+    uint256 currBalance = _balances[trader];
+    require(currBalance >= amount, "Insufficient keys");
 
     // fetch last subscription deposit checkpoint
     Common.SubscriptionPoolCheckpoint memory cp = SubscriptionPool(
@@ -209,7 +210,7 @@ contract SubscriptionKeys {
     );
 
     // update checkpoints
-    uint256 newBal = _balances[msg.sender] - amount;
+    uint256 newBal = currBalance - amount;
     uint256 newDeposit = cp.deposit - fees;
     SubscriptionPool(subPoolContract).updateTraderInfo(
       trader,
