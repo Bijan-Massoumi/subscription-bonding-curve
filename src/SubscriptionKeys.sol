@@ -2,20 +2,13 @@
 pragma solidity ^0.8.18;
 
 import "./SubscriptionPool.sol";
-import "./Utils.sol";
+import "./ComputeUtils.sol";
 import "./Common.sol";
 import "forge-std/console.sol";
 
-struct PriceChange {
-  uint256 price;
-  uint128 rate;
-  uint112 startTimestamp;
-  uint16 index;
-}
-
 struct Proof {
   address keyContract;
-  PriceChange[] pcs;
+  Common.PriceChange[] pcs;
 }
 
 // TODO add method that liquidates all users, it should give a gas refund, it should revert if there are no users to liquidate
@@ -36,11 +29,11 @@ contract SubscriptionKeys {
 
   // TODO make subscriptinoRate changes work
   // historical prices
-  PriceChange[] historicalPriceChanges;
+  Common.PriceChange[] historicalPriceChanges;
   bytes32[] historicalPriceHashes;
 
   // price changes over the length of the set period
-  PriceChange[] recentPriceChanges;
+  Common.PriceChange[] recentPriceChanges;
 
   mapping(address trader => uint256 index) private _traderPriceIndex;
 
@@ -69,7 +62,7 @@ contract SubscriptionKeys {
     groupId = _groupId;
 
     // first period has no interest rate on buys
-    PriceChange memory newPriceChange = PriceChange({
+    Common.PriceChange memory newPriceChange = Common.PriceChange({
       price: 0,
       rate: uint128(_subscriptionRate),
       startTimestamp: uint112(block.timestamp),
@@ -233,27 +226,20 @@ contract SubscriptionKeys {
 
     // Check if a full period has elapsed
     if (currentTime - periodLastOccuredAt >= period) {
-      uint256 totalWeightedPrice = 0;
-      uint256 totalDuration = 0;
-
       // If there's at least one price change in the recent changes
+      uint256 averagePrice;
       if (recentPriceChanges.length > 0) {
         // Calculate the time-weighted average
-        for (uint256 i = 0; i < recentPriceChanges.length; i++) {
-          uint256 duration = (i == recentPriceChanges.length - 1)
-            ? currentTime - recentPriceChanges[i].startTimestamp
-            : recentPriceChanges[i + 1].startTimestamp -
-              recentPriceChanges[i].startTimestamp;
-
-          totalWeightedPrice += duration * recentPriceChanges[i].price;
-          totalDuration += duration;
-        }
+        averagePrice = ComputeUtils.calculateTimeWeightedAveragePrice(
+          recentPriceChanges,
+          currentTime
+        );
+      } else {
+        averagePrice = historicalPriceChanges[historicalPriceChanges.length - 1]
+          .price;
       }
-      uint256 averagePrice = (totalDuration == 0)
-        ? newPrice
-        : totalWeightedPrice / totalDuration;
 
-      PriceChange memory newHistoricalPriceChange = PriceChange({
+      Common.PriceChange memory newHistoricalPriceChange = Common.PriceChange({
         price: averagePrice,
         rate: historicalPriceChanges[historicalPriceChanges.length - 1].rate,
         startTimestamp: uint112(currentTime),
@@ -273,17 +259,18 @@ contract SubscriptionKeys {
       // Reset the recentPriceChanges and update the period's last occurrence time
       delete recentPriceChanges;
       periodLastOccuredAt = currentTime;
-    } else {
-      // If not a full period, simply add the new price to recentPriceChanges
-      PriceChange memory newRecentPriceChange = PriceChange({
-        price: newPrice,
-        rate: historicalPriceChanges[historicalPriceChanges.length - 1].rate,
-        startTimestamp: uint112(currentTime),
-        index: uint16(recentPriceChanges.length)
-      });
-
-      recentPriceChanges.push(newRecentPriceChange);
     }
+
+    // TODO check if last elem has the same timestamp and combine if so
+    // add the new price to recentPriceChanges
+    Common.PriceChange memory newRecentPriceChange = Common.PriceChange({
+      price: newPrice,
+      rate: historicalPriceChanges[historicalPriceChanges.length - 1].rate,
+      startTimestamp: uint112(currentTime),
+      index: uint16(recentPriceChanges.length)
+    });
+
+    recentPriceChanges.push(newRecentPriceChange);
   }
 
   function _verifyAndCollectFees(
@@ -377,7 +364,7 @@ contract SubscriptionKeys {
     Proof calldata proof,
     uint256 balance
   ) internal view returns (uint256 fees, bytes32 h) {
-    PriceChange[] calldata pastPrices = proof.pcs;
+    Common.PriceChange[] calldata pastPrices = proof.pcs;
     require(pastPrices.length > 0, "No past prices");
 
     bytes32 currentHash = initialHash;
@@ -399,7 +386,7 @@ contract SubscriptionKeys {
         ? lastCheckpointAt
         : lastTimestamp;
 
-      totalFee += Utils._calculateFeeBetweenTimes(
+      totalFee += ComputeUtils._calculateFeeBetweenTimes(
         balance * pastPrices[i].price,
         startInterestAt,
         nextTimestamp,
@@ -462,7 +449,7 @@ contract SubscriptionKeys {
   function getPriceProof(address trader) external view returns (Proof memory) {
     uint256 startIndex = getLastTraderPriceIndex(trader);
     uint256 length = historicalPriceChanges.length - startIndex;
-    PriceChange[] memory pc = new PriceChange[](length);
+    Common.PriceChange[] memory pc = new Common.PriceChange[](length);
     for (uint256 i = 0; i < length; i++) {
       pc[i] = historicalPriceChanges[startIndex + i];
     }

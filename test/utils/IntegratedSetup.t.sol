@@ -3,11 +3,11 @@
 pragma solidity ^0.8.18;
 
 import "forge-std/Test.sol";
-import "../src/KeyFactory.sol";
-import "../src/SubscriptionPool.sol";
+import "../../src/KeyFactory.sol";
+import "../../src/SubscriptionPool.sol";
 import "forge-std/console.sol";
 
-abstract contract Setup is Test {
+abstract contract IntegratedSetup is Test {
   address withdrawAddr = address(1137);
   SubscriptionPool subPool;
   address owner = address(1);
