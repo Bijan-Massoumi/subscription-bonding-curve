@@ -46,7 +46,6 @@ contract SubscriptionPool is ISubscriptionPoolErrors {
   ) external {
     require(groupId <= permissionGroupCount, "Invalid group ID");
     require(permissionGroups[groupId].owner == msg.sender, "Not the owner");
-    console.log(groupId, contractAddr);
     permissionGroups[groupId].members[contractAddr] = true;
   }
 
@@ -169,35 +168,6 @@ contract SubscriptionPool is ISubscriptionPoolErrors {
     return totalRequirement;
   }
 
-  // function getCurrentPoolRequirementForSell(
-  //   address trader,
-  //   address sellContract,
-  //   uint256 amount
-  // ) external view returns (uint256) {
-  //   require(
-  //     KeyFactory(factoryContract).isValidDeployment(sellContract),
-  //     "Invalid artist contract"
-  //   );
-
-  //   uint256 totalRequirement = _getUnchangingPoolRequirement(
-  //     trader,
-  //     sellContract
-  //   );
-  //   // For the calling contract, calculate the requirement after the buy
-  //   uint256 newPrice = SubscriptionKeys(sellContract).getSellPrice(amount);
-  //   uint256 balance = SubscriptionKeys(sellContract).balanceOf(trader);
-  //   require(balance >= amount, "Insufficient balance");
-
-  //   uint256 additionalRequirement = (newPrice *
-  //     (balance - amount) *
-  //     minimumPoolRatio) / 10000;
-
-  //   // Add the additional requirement to the total requirement
-  //   totalRequirement += additionalRequirement;
-
-  //   return totalRequirement;
-  // }
-
   function _getUnchangingPoolRequirement(
     address trader,
     uint256 groupId,
@@ -242,5 +212,39 @@ contract SubscriptionPool is ISubscriptionPoolErrors {
       storage cp = _groupedSubscriptionCheckpoints[trader][groupId];
     cp.deposit = newSubPool;
     cp.lastModifiedAt = block.timestamp;
+  }
+
+  // -------------- subscription pool methods ----------------
+
+  function increaseSubscriptionPoolForGroupId(
+    uint256 groupId
+  ) external payable {
+    Common.SubscriptionPoolCheckpoint memory cp = getSubscriptionPoolCheckpoint(
+      msg.sender,
+      groupId
+    );
+
+    uint256 newDeposit = cp.deposit + msg.value;
+    _updateTraderPool(msg.sender, groupId, newDeposit);
+  }
+
+  function decreaseSubscriptionPool(uint256 groupId, uint256 amount) external {
+    Common.SubscriptionPoolCheckpoint memory cp = getSubscriptionPoolCheckpoint(
+      msg.sender,
+      groupId
+    );
+    uint256 req = getCurrentPoolRequirement(msg.sender, groupId);
+
+    require(cp.deposit >= amount, "Insufficient deposit");
+    require(
+      cp.deposit - amount >= req,
+      "Deposit cannot be less than current requirement"
+    );
+    uint256 newDeposit = cp.deposit - amount;
+    _updateTraderPool(msg.sender, 0, newDeposit);
+
+    // Transfer the amount to the trader
+    (bool success, ) = msg.sender.call{value: amount}("");
+    require(success, "Transfer failed");
   }
 }

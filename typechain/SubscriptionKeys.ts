@@ -56,51 +56,43 @@ export type ProofStructOutput = [string, PriceChangeStructOutput[]] & {
 export interface SubscriptionKeysInterface extends utils.Interface {
   functions: {
     "balanceOf(address)": FunctionFragment;
-    "buyShares(uint256,(address,(uint256,uint128,uint112,uint16)[])[])": FunctionFragment;
-    "decreaseSubscriptionPool(uint256,uint256)": FunctionFragment;
+    "buyKeys(uint256,(address,(uint256,uint128,uint112,uint16)[])[])": FunctionFragment;
     "getBuyPrice(uint256)": FunctionFragment;
     "getCurrentPrice()": FunctionFragment;
+    "getKeySubject()": FunctionFragment;
     "getLastTraderPriceIndex(address)": FunctionFragment;
     "getPrice(uint256,uint256)": FunctionFragment;
+    "getPriceProof(address)": FunctionFragment;
     "getSellPrice(uint256)": FunctionFragment;
-    "getKeySubject()": FunctionFragment;
     "getStartHash(address)": FunctionFragment;
     "getSupply()": FunctionFragment;
     "getTaxPrice(uint256)": FunctionFragment;
-    "increaseSubscriptionPool(uint256,uint256)": FunctionFragment;
-    "sellShares(uint256)": FunctionFragment;
-    "verifyHash(bytes32,address)": FunctionFragment;
-    "withdrawDeposit()": FunctionFragment;
+    "sellKeys(uint256,(address,(uint256,uint128,uint112,uint16)[])[])": FunctionFragment;
+    "verifyHashExternal(bytes32,address)": FunctionFragment;
   };
 
   getFunction(
     nameOrSignatureOrTopic:
       | "balanceOf"
-      | "buyShares"
-      | "decreaseSubscriptionPool"
+      | "buyKeys"
       | "getBuyPrice"
       | "getCurrentPrice"
+      | "getKeySubject"
       | "getLastTraderPriceIndex"
       | "getPrice"
+      | "getPriceProof"
       | "getSellPrice"
-      | "getKeySubject"
       | "getStartHash"
       | "getSupply"
       | "getTaxPrice"
-      | "increaseSubscriptionPool"
-      | "sellShares"
-      | "verifyHash"
-      | "withdrawDeposit"
+      | "sellKeys"
+      | "verifyHashExternal"
   ): FunctionFragment;
 
   encodeFunctionData(functionFragment: "balanceOf", values: [string]): string;
   encodeFunctionData(
-    functionFragment: "buyShares",
+    functionFragment: "buyKeys",
     values: [BigNumberish, ProofStruct[]]
-  ): string;
-  encodeFunctionData(
-    functionFragment: "decreaseSubscriptionPool",
-    values: [BigNumberish, BigNumberish]
   ): string;
   encodeFunctionData(
     functionFragment: "getBuyPrice",
@@ -108,6 +100,10 @@ export interface SubscriptionKeysInterface extends utils.Interface {
   ): string;
   encodeFunctionData(
     functionFragment: "getCurrentPrice",
+    values?: undefined
+  ): string;
+  encodeFunctionData(
+    functionFragment: "getKeySubject",
     values?: undefined
   ): string;
   encodeFunctionData(
@@ -119,12 +115,12 @@ export interface SubscriptionKeysInterface extends utils.Interface {
     values: [BigNumberish, BigNumberish]
   ): string;
   encodeFunctionData(
-    functionFragment: "getSellPrice",
-    values: [BigNumberish]
+    functionFragment: "getPriceProof",
+    values: [string]
   ): string;
   encodeFunctionData(
-    functionFragment: "getKeySubject",
-    values?: undefined
+    functionFragment: "getSellPrice",
+    values: [BigNumberish]
   ): string;
   encodeFunctionData(
     functionFragment: "getStartHash",
@@ -136,28 +132,16 @@ export interface SubscriptionKeysInterface extends utils.Interface {
     values: [BigNumberish]
   ): string;
   encodeFunctionData(
-    functionFragment: "increaseSubscriptionPool",
-    values: [BigNumberish, BigNumberish]
+    functionFragment: "sellKeys",
+    values: [BigNumberish, ProofStruct[]]
   ): string;
   encodeFunctionData(
-    functionFragment: "sellShares",
-    values: [BigNumberish]
-  ): string;
-  encodeFunctionData(
-    functionFragment: "verifyHash",
+    functionFragment: "verifyHashExternal",
     values: [BytesLike, string]
-  ): string;
-  encodeFunctionData(
-    functionFragment: "withdrawDeposit",
-    values?: undefined
   ): string;
 
   decodeFunctionResult(functionFragment: "balanceOf", data: BytesLike): Result;
-  decodeFunctionResult(functionFragment: "buyShares", data: BytesLike): Result;
-  decodeFunctionResult(
-    functionFragment: "decreaseSubscriptionPool",
-    data: BytesLike
-  ): Result;
+  decodeFunctionResult(functionFragment: "buyKeys", data: BytesLike): Result;
   decodeFunctionResult(
     functionFragment: "getBuyPrice",
     data: BytesLike
@@ -167,16 +151,20 @@ export interface SubscriptionKeysInterface extends utils.Interface {
     data: BytesLike
   ): Result;
   decodeFunctionResult(
+    functionFragment: "getKeySubject",
+    data: BytesLike
+  ): Result;
+  decodeFunctionResult(
     functionFragment: "getLastTraderPriceIndex",
     data: BytesLike
   ): Result;
   decodeFunctionResult(functionFragment: "getPrice", data: BytesLike): Result;
   decodeFunctionResult(
-    functionFragment: "getSellPrice",
+    functionFragment: "getPriceProof",
     data: BytesLike
   ): Result;
   decodeFunctionResult(
-    functionFragment: "getKeySubject",
+    functionFragment: "getSellPrice",
     data: BytesLike
   ): Result;
   decodeFunctionResult(
@@ -188,14 +176,9 @@ export interface SubscriptionKeysInterface extends utils.Interface {
     functionFragment: "getTaxPrice",
     data: BytesLike
   ): Result;
+  decodeFunctionResult(functionFragment: "sellKeys", data: BytesLike): Result;
   decodeFunctionResult(
-    functionFragment: "increaseSubscriptionPool",
-    data: BytesLike
-  ): Result;
-  decodeFunctionResult(functionFragment: "sellShares", data: BytesLike): Result;
-  decodeFunctionResult(functionFragment: "verifyHash", data: BytesLike): Result;
-  decodeFunctionResult(
-    functionFragment: "withdrawDeposit",
+    functionFragment: "verifyHashExternal",
     data: BytesLike
   ): Result;
 
@@ -250,16 +233,10 @@ export interface SubscriptionKeys extends BaseContract {
   functions: {
     balanceOf(addr: string, overrides?: CallOverrides): Promise<[BigNumber]>;
 
-    buyShares(
+    buyKeys(
       amount: BigNumberish,
       proofs: ProofStruct[],
       overrides?: PayableOverrides & { from?: string }
-    ): Promise<ContractTransaction>;
-
-    decreaseSubscriptionPool(
-      tokenId: BigNumberish,
-      amount: BigNumberish,
-      overrides?: Overrides & { from?: string }
     ): Promise<ContractTransaction>;
 
     getBuyPrice(
@@ -268,6 +245,8 @@ export interface SubscriptionKeys extends BaseContract {
     ): Promise<[BigNumber]>;
 
     getCurrentPrice(overrides?: CallOverrides): Promise<[BigNumber]>;
+
+    getKeySubject(overrides?: CallOverrides): Promise<[string]>;
 
     getLastTraderPriceIndex(
       trader: string,
@@ -280,12 +259,15 @@ export interface SubscriptionKeys extends BaseContract {
       overrides?: CallOverrides
     ): Promise<[BigNumber]>;
 
+    getPriceProof(
+      trader: string,
+      overrides?: CallOverrides
+    ): Promise<[ProofStructOutput]>;
+
     getSellPrice(
       amount: BigNumberish,
       overrides?: CallOverrides
     ): Promise<[BigNumber]>;
-
-    getKeySubject(overrides?: CallOverrides): Promise<[string]>;
 
     getStartHash(trader: string, overrides?: CallOverrides): Promise<[string]>;
 
@@ -296,40 +278,25 @@ export interface SubscriptionKeys extends BaseContract {
       overrides?: CallOverrides
     ): Promise<[BigNumber]>;
 
-    increaseSubscriptionPool(
-      tokenId: BigNumberish,
+    sellKeys(
       amount: BigNumberish,
+      proofs: ProofStruct[],
       overrides?: Overrides & { from?: string }
     ): Promise<ContractTransaction>;
 
-    sellShares(
-      amount: BigNumberish,
-      overrides?: PayableOverrides & { from?: string }
-    ): Promise<ContractTransaction>;
-
-    verifyHash(
+    verifyHashExternal(
       h: BytesLike,
       trader: string,
-      overrides?: Overrides & { from?: string }
-    ): Promise<ContractTransaction>;
-
-    withdrawDeposit(
       overrides?: Overrides & { from?: string }
     ): Promise<ContractTransaction>;
   };
 
   balanceOf(addr: string, overrides?: CallOverrides): Promise<BigNumber>;
 
-  buyShares(
+  buyKeys(
     amount: BigNumberish,
     proofs: ProofStruct[],
     overrides?: PayableOverrides & { from?: string }
-  ): Promise<ContractTransaction>;
-
-  decreaseSubscriptionPool(
-    tokenId: BigNumberish,
-    amount: BigNumberish,
-    overrides?: Overrides & { from?: string }
   ): Promise<ContractTransaction>;
 
   getBuyPrice(
@@ -338,6 +305,8 @@ export interface SubscriptionKeys extends BaseContract {
   ): Promise<BigNumber>;
 
   getCurrentPrice(overrides?: CallOverrides): Promise<BigNumber>;
+
+  getKeySubject(overrides?: CallOverrides): Promise<string>;
 
   getLastTraderPriceIndex(
     trader: string,
@@ -350,12 +319,15 @@ export interface SubscriptionKeys extends BaseContract {
     overrides?: CallOverrides
   ): Promise<BigNumber>;
 
+  getPriceProof(
+    trader: string,
+    overrides?: CallOverrides
+  ): Promise<ProofStructOutput>;
+
   getSellPrice(
     amount: BigNumberish,
     overrides?: CallOverrides
   ): Promise<BigNumber>;
-
-  getKeySubject(overrides?: CallOverrides): Promise<string>;
 
   getStartHash(trader: string, overrides?: CallOverrides): Promise<string>;
 
@@ -366,39 +338,24 @@ export interface SubscriptionKeys extends BaseContract {
     overrides?: CallOverrides
   ): Promise<BigNumber>;
 
-  increaseSubscriptionPool(
-    tokenId: BigNumberish,
+  sellKeys(
     amount: BigNumberish,
+    proofs: ProofStruct[],
     overrides?: Overrides & { from?: string }
   ): Promise<ContractTransaction>;
 
-  sellShares(
-    amount: BigNumberish,
-    overrides?: PayableOverrides & { from?: string }
-  ): Promise<ContractTransaction>;
-
-  verifyHash(
+  verifyHashExternal(
     h: BytesLike,
     trader: string,
-    overrides?: Overrides & { from?: string }
-  ): Promise<ContractTransaction>;
-
-  withdrawDeposit(
     overrides?: Overrides & { from?: string }
   ): Promise<ContractTransaction>;
 
   callStatic: {
     balanceOf(addr: string, overrides?: CallOverrides): Promise<BigNumber>;
 
-    buyShares(
+    buyKeys(
       amount: BigNumberish,
       proofs: ProofStruct[],
-      overrides?: CallOverrides
-    ): Promise<void>;
-
-    decreaseSubscriptionPool(
-      tokenId: BigNumberish,
-      amount: BigNumberish,
       overrides?: CallOverrides
     ): Promise<void>;
 
@@ -408,6 +365,8 @@ export interface SubscriptionKeys extends BaseContract {
     ): Promise<BigNumber>;
 
     getCurrentPrice(overrides?: CallOverrides): Promise<BigNumber>;
+
+    getKeySubject(overrides?: CallOverrides): Promise<string>;
 
     getLastTraderPriceIndex(
       trader: string,
@@ -420,12 +379,15 @@ export interface SubscriptionKeys extends BaseContract {
       overrides?: CallOverrides
     ): Promise<BigNumber>;
 
+    getPriceProof(
+      trader: string,
+      overrides?: CallOverrides
+    ): Promise<ProofStructOutput>;
+
     getSellPrice(
       amount: BigNumberish,
       overrides?: CallOverrides
     ): Promise<BigNumber>;
-
-    getKeySubject(overrides?: CallOverrides): Promise<string>;
 
     getStartHash(trader: string, overrides?: CallOverrides): Promise<string>;
 
@@ -436,21 +398,17 @@ export interface SubscriptionKeys extends BaseContract {
       overrides?: CallOverrides
     ): Promise<BigNumber>;
 
-    increaseSubscriptionPool(
-      tokenId: BigNumberish,
+    sellKeys(
       amount: BigNumberish,
+      proofs: ProofStruct[],
       overrides?: CallOverrides
     ): Promise<void>;
 
-    sellShares(amount: BigNumberish, overrides?: CallOverrides): Promise<void>;
-
-    verifyHash(
+    verifyHashExternal(
       h: BytesLike,
       trader: string,
       overrides?: CallOverrides
     ): Promise<boolean>;
-
-    withdrawDeposit(overrides?: CallOverrides): Promise<void>;
   };
 
   filters: {
@@ -475,16 +433,10 @@ export interface SubscriptionKeys extends BaseContract {
   estimateGas: {
     balanceOf(addr: string, overrides?: CallOverrides): Promise<BigNumber>;
 
-    buyShares(
+    buyKeys(
       amount: BigNumberish,
       proofs: ProofStruct[],
       overrides?: PayableOverrides & { from?: string }
-    ): Promise<BigNumber>;
-
-    decreaseSubscriptionPool(
-      tokenId: BigNumberish,
-      amount: BigNumberish,
-      overrides?: Overrides & { from?: string }
     ): Promise<BigNumber>;
 
     getBuyPrice(
@@ -493,6 +445,8 @@ export interface SubscriptionKeys extends BaseContract {
     ): Promise<BigNumber>;
 
     getCurrentPrice(overrides?: CallOverrides): Promise<BigNumber>;
+
+    getKeySubject(overrides?: CallOverrides): Promise<BigNumber>;
 
     getLastTraderPriceIndex(
       trader: string,
@@ -505,12 +459,15 @@ export interface SubscriptionKeys extends BaseContract {
       overrides?: CallOverrides
     ): Promise<BigNumber>;
 
+    getPriceProof(
+      trader: string,
+      overrides?: CallOverrides
+    ): Promise<BigNumber>;
+
     getSellPrice(
       amount: BigNumberish,
       overrides?: CallOverrides
     ): Promise<BigNumber>;
-
-    getKeySubject(overrides?: CallOverrides): Promise<BigNumber>;
 
     getStartHash(trader: string, overrides?: CallOverrides): Promise<BigNumber>;
 
@@ -521,24 +478,15 @@ export interface SubscriptionKeys extends BaseContract {
       overrides?: CallOverrides
     ): Promise<BigNumber>;
 
-    increaseSubscriptionPool(
-      tokenId: BigNumberish,
+    sellKeys(
       amount: BigNumberish,
+      proofs: ProofStruct[],
       overrides?: Overrides & { from?: string }
     ): Promise<BigNumber>;
 
-    sellShares(
-      amount: BigNumberish,
-      overrides?: PayableOverrides & { from?: string }
-    ): Promise<BigNumber>;
-
-    verifyHash(
+    verifyHashExternal(
       h: BytesLike,
       trader: string,
-      overrides?: Overrides & { from?: string }
-    ): Promise<BigNumber>;
-
-    withdrawDeposit(
       overrides?: Overrides & { from?: string }
     ): Promise<BigNumber>;
   };
@@ -549,16 +497,10 @@ export interface SubscriptionKeys extends BaseContract {
       overrides?: CallOverrides
     ): Promise<PopulatedTransaction>;
 
-    buyShares(
+    buyKeys(
       amount: BigNumberish,
       proofs: ProofStruct[],
       overrides?: PayableOverrides & { from?: string }
-    ): Promise<PopulatedTransaction>;
-
-    decreaseSubscriptionPool(
-      tokenId: BigNumberish,
-      amount: BigNumberish,
-      overrides?: Overrides & { from?: string }
     ): Promise<PopulatedTransaction>;
 
     getBuyPrice(
@@ -567,6 +509,8 @@ export interface SubscriptionKeys extends BaseContract {
     ): Promise<PopulatedTransaction>;
 
     getCurrentPrice(overrides?: CallOverrides): Promise<PopulatedTransaction>;
+
+    getKeySubject(overrides?: CallOverrides): Promise<PopulatedTransaction>;
 
     getLastTraderPriceIndex(
       trader: string,
@@ -579,12 +523,15 @@ export interface SubscriptionKeys extends BaseContract {
       overrides?: CallOverrides
     ): Promise<PopulatedTransaction>;
 
+    getPriceProof(
+      trader: string,
+      overrides?: CallOverrides
+    ): Promise<PopulatedTransaction>;
+
     getSellPrice(
       amount: BigNumberish,
       overrides?: CallOverrides
     ): Promise<PopulatedTransaction>;
-
-    getKeySubject(overrides?: CallOverrides): Promise<PopulatedTransaction>;
 
     getStartHash(
       trader: string,
@@ -598,24 +545,15 @@ export interface SubscriptionKeys extends BaseContract {
       overrides?: CallOverrides
     ): Promise<PopulatedTransaction>;
 
-    increaseSubscriptionPool(
-      tokenId: BigNumberish,
+    sellKeys(
       amount: BigNumberish,
+      proofs: ProofStruct[],
       overrides?: Overrides & { from?: string }
     ): Promise<PopulatedTransaction>;
 
-    sellShares(
-      amount: BigNumberish,
-      overrides?: PayableOverrides & { from?: string }
-    ): Promise<PopulatedTransaction>;
-
-    verifyHash(
+    verifyHashExternal(
       h: BytesLike,
       trader: string,
-      overrides?: Overrides & { from?: string }
-    ): Promise<PopulatedTransaction>;
-
-    withdrawDeposit(
       overrides?: Overrides & { from?: string }
     ): Promise<PopulatedTransaction>;
   };

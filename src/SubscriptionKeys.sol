@@ -180,19 +180,51 @@ contract SubscriptionKeys {
 
     // send fees to keySubject
     (bool success, ) = keySubject.call{value: fees}("");
+    require(success, "Unable to send funds");
   }
 
-  function sellKeys(uint256 amount) public {
-    require(supply > amount, "Cannot sell the last share");
-    require(amount > 0, "Cannot sell 0 shares");
-    uint256 price = getPrice(supply - amount, amount);
-    require(_balances[msg.sender] >= amount, "Insufficient shares");
+  function sellKeys(uint256 amount, Proof[] calldata proofs) public {
+    // TODO reconsider conditions
+    require(supply > amount, "Cannot sell the last key");
+    require(amount > 0, "Cannot sell 0 keys");
 
-    _balances[msg.sender] = _balances[msg.sender] - amount;
+    uint256 price = getPrice(supply - amount, amount);
+    address trader = msg.sender;
+    require(_balances[trader] >= amount, "Insufficient keys");
+
+    // fetch last subscription deposit checkpoint
+    Common.SubscriptionPoolCheckpoint memory cp = SubscriptionPool(
+      subPoolContract
+    ).getSubscriptionPoolCheckpoint(trader, groupId);
+
+    // collect fees
+    Common.ContractInfo[] memory traderContracts = SubscriptionPool(
+      subPoolContract
+    ).getTraderContracts(trader, groupId);
+    uint256 fees = _verifyAndCollectFees(
+      traderContracts,
+      trader,
+      cp.lastModifiedAt,
+      proofs
+    );
+
+    // update checkpoints
+    uint256 newBal = _balances[msg.sender] - amount;
+    uint256 newDeposit = cp.deposit - fees;
+    SubscriptionPool(subPoolContract).updateTraderInfo(
+      trader,
+      groupId,
+      newDeposit,
+      newBal
+    );
+    _updatePriceOracle(price);
+
+    _balances[msg.sender] = newBal;
     supply = supply - amount;
 
     (bool success1, ) = msg.sender.call{value: price}("");
-    require(success1, "Unable to send funds");
+    (bool success2, ) = keySubject.call{value: fees}("");
+    require(success1 && success2, "Unable to send funds");
   }
 
   function _updatePriceOracle(uint256 newPrice) internal {
@@ -435,26 +467,5 @@ contract SubscriptionKeys {
     }
 
     return Proof({keyContract: address(this), pcs: pc});
-  }
-
-  // -------------- subscription pool methods ----------------
-
-  function increaseSubscriptionPool(uint256 tokenId, uint256 amount) external {
-    // TODO
-  }
-
-  function decreaseSubscriptionPool(uint256 tokenId, uint256 amount) external {
-    // TODO
-  }
-
-  // TODO redo this
-  function withdrawDeposit() public {
-    // uint256 pool = SubscriptionPool(subPoolContract)
-    //   .getSubscriptionPoolRemaining(msg.sender);
-    // require(pool > 0, "Insufficient pool");
-    // (bool success, ) = msg.sender.call{value: pool}("");
-    // require(success, "Unable to send funds");
-    // SubscriptionPool(subPoolContract).updateTraderInfo(msg.sender, 0, 0);
-    // creatorFees = 0;
   }
 }
