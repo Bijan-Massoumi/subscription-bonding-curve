@@ -35,7 +35,7 @@ contract SubscriptionKeys {
   // price changes over the length of the set period
   Common.PriceChange[] recentPriceChanges;
 
-  mapping(address trader => uint256 index) private _traderPriceIndex;
+  mapping(address trader => uint256 index) _traderPriceIndex;
 
   uint256 period = 43_200;
   uint256 periodLastOccuredAt;
@@ -238,22 +238,7 @@ contract SubscriptionKeys {
           .price;
       }
 
-      Common.PriceChange memory newHistoricalPriceChange = Common.PriceChange({
-        price: averagePrice,
-        rate: historicalPriceChanges[historicalPriceChanges.length - 1].rate,
-        startTimestamp: uint112(currentTime),
-        index: uint16(historicalPriceChanges.length)
-      });
-      historicalPriceChanges.push(newHistoricalPriceChange);
-
-      // Hash chaining
-      bytes32 previousHash = historicalPriceHashes[
-        historicalPriceHashes.length - 1
-      ];
-      bytes32 newHash = keccak256(
-        abi.encode(newHistoricalPriceChange, previousHash)
-      );
-      historicalPriceHashes.push(newHash);
+      _addHistoricalPriceChange(averagePrice, currentTime);
 
       // Reset the recentPriceChanges and update the period's last occurrence time
       delete recentPriceChanges;
@@ -270,6 +255,28 @@ contract SubscriptionKeys {
     });
 
     recentPriceChanges.push(newRecentPriceChange);
+  }
+
+  function _addHistoricalPriceChange(
+    uint256 averagePrice,
+    uint256 currentTime
+  ) internal {
+    Common.PriceChange memory newHistoricalPriceChange = Common.PriceChange({
+      price: averagePrice,
+      rate: historicalPriceChanges[historicalPriceChanges.length - 1].rate,
+      startTimestamp: uint112(currentTime),
+      index: uint16(historicalPriceChanges.length)
+    });
+    historicalPriceChanges.push(newHistoricalPriceChange);
+
+    // Hash chaining
+    bytes32 previousHash = historicalPriceHashes[
+      historicalPriceHashes.length - 1
+    ];
+    bytes32 newHash = keccak256(
+      abi.encode(newHistoricalPriceChange, previousHash)
+    );
+    historicalPriceHashes.push(newHash);
   }
 
   function _verifyAndCollectFees(

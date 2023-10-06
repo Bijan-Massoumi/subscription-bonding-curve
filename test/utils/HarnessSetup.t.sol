@@ -22,6 +22,34 @@ contract KeyHarness is SubscriptionKeys {
     return historicalPriceChanges;
   }
 
+  // set periodLastOccuredAt
+  function exposedSetPeriodLastOccuredAt(uint256 timestamp) external {
+    periodLastOccuredAt = timestamp;
+  }
+
+  function setHistoricalPriceChanges(
+    Common.PriceChange[] memory changes
+  ) external {
+    for (uint256 i = 0; i < changes.length; i++) {
+      historicalPriceChanges.push(changes[i]);
+    }
+  }
+
+  function exposedAddHistoricalPriceChange(
+    uint256 averagePrice,
+    uint256 currentTime
+  ) external {
+    _addHistoricalPriceChange(averagePrice, currentTime);
+  }
+
+  // set _traderPriceIndex
+  function exposedSetTraderPriceIndex(
+    uint256 newIndex,
+    address trader
+  ) external {
+    _traderPriceIndex[trader] = newIndex;
+  }
+
   // get recentPriceChanges
   function exposedGetRecentPriceChanges()
     external
@@ -49,12 +77,7 @@ contract KeyHarness is SubscriptionKeys {
     Proof[] calldata proofs
   ) public returns (uint256) {
     return
-      harness._verifyAndCollectFees(
-        traderContracts,
-        trader,
-        lastDepositTime,
-        proofs
-      );
+      _verifyAndCollectFees(traderContracts, trader, lastDepositTime, proofs);
   }
 }
 
