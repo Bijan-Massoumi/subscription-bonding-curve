@@ -10,8 +10,9 @@ import "forge-std/console.sol";
 contract KeyHarness is SubscriptionKeys {
   constructor(
     address factory,
-    address keyOwner
-  ) SubscriptionKeys(1, keyOwner, address(1), factory) {}
+    address keyOwner,
+    address subPoolContract
+  ) SubscriptionKeys(1000, keyOwner, subPoolContract, factory) {}
 
   // get historicalPriceChanges
   function exposedGetHistoricalPriceChanges()
@@ -116,7 +117,7 @@ abstract contract HarnessSetup is Test {
 
     vm.startPrank(owner);
     keyFactory = new KeyFactoryHarness(address(subPool));
-    harness = new KeyHarness(address(keyFactory), owner);
+    harness = new KeyHarness(address(keyFactory), owner, address(subPool));
     keyFactory.exposedAddNewSubKeyContract(owner, address(harness));
 
     key1 = SubscriptionKeys(keyFactory.createSubKeyContract(addr1));

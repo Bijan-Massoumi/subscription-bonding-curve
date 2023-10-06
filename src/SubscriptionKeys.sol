@@ -127,16 +127,15 @@ contract SubscriptionKeys {
     uint256 price = getPrice(supply, amount);
     require(msg.value >= price, "Inusfficient nft price");
     address trader = msg.sender;
-
     // fetch last subscription deposit checkpoint
     Common.SubscriptionPoolCheckpoint memory cp = SubscriptionPool(
       subPoolContract
     ).getSubscriptionPoolCheckpoint(trader, groupId);
-
     // collect fees
     Common.ContractInfo[] memory traderContracts = SubscriptionPool(
       subPoolContract
     ).getTraderContracts(trader, groupId);
+
     uint256 fees = _verifyAndCollectFees(
       traderContracts,
       trader,
@@ -159,7 +158,7 @@ contract SubscriptionKeys {
     // adjust supply
     uint256 newBal = _balances[trader] + amount;
     supply = supply + amount;
-    _balances[trader] = _balances[trader] + amount;
+    _balances[trader] = newBal;
 
     // update checkpoints
     SubscriptionPool(subPoolContract).updateTraderInfo(
@@ -169,7 +168,6 @@ contract SubscriptionKeys {
       newBal
     );
     _updatePriceOracle(price);
-
     // send fees to keySubject
     (bool success, ) = keySubject.call{value: fees}("");
     require(success, "Unable to send funds");
@@ -382,6 +380,7 @@ contract SubscriptionKeys {
       uint256 nextTimestamp = i < endIndex
         ? pastPrices[i + 1].startTimestamp
         : block.timestamp;
+
       if (lastCheckpointAt > nextTimestamp) {
         continue;
       }
@@ -444,8 +443,9 @@ contract SubscriptionKeys {
   function getLastTraderPriceIndex(
     address trader
   ) public view returns (uint256) {
+    uint256 bal = balanceOf(trader);
     uint256 idx = _traderPriceIndex[trader];
-    if (idx == 0) {
+    if (idx == 0 && bal == 0) {
       return historicalPriceChanges.length - 1;
     }
 

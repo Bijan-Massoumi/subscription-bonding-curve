@@ -2,6 +2,7 @@
 pragma solidity ^0.8.18;
 
 import "./ISubscriptionPoolErrors.sol";
+import "forge-std/console.sol";
 import "./KeyFactory.sol";
 import "./Common.sol";
 import "@openzeppelin/contracts/utils/structs/EnumerableMap.sol";
