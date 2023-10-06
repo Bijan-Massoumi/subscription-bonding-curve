@@ -7,7 +7,6 @@ import "forge-std/console.sol";
 
 contract ComputeUtilsTest is Test {
   function testSinglePriceChange() public {
-    uint256 newPrice = 150;
     uint256 currentTime = block.timestamp;
 
     Common.PriceChange[] memory recentPriceChanges = new Common.PriceChange[](

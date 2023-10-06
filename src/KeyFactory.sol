@@ -11,21 +11,20 @@ contract SubKeys is SubscriptionKeys {
     uint256 _subscriptionRate,
     address _subject,
     address _subPoolContract,
-    address _factoryContract,
-    uint256 _groupId
+    address _factoryContract
   )
     SubscriptionKeys(
       _subscriptionRate,
       _subject,
       _subPoolContract,
-      _factoryContract,
-      _groupId
+      _factoryContract
     )
   {}
 }
 
 contract KeyFactory is Ownable {
   address subPoolContract;
+  // TODO why is this here?
   address public newSubKeys;
   uint256 groupId;
   mapping(address => address) public subjectToContract;
@@ -60,21 +59,28 @@ contract KeyFactory is Ownable {
     );
 
     newSubKeys = address(
-      new SubKeys(perc, _sharesSubject, subPoolContract, address(this), groupId)
+      new SubKeys(perc, _sharesSubject, subPoolContract, address(this))
     );
 
-    SubscriptionPool(subPoolContract).addContractToPermissionGroup(
-      groupId,
-      newSubKeys
-    );
-    // Update the mapping and the array
-    subjectToContract[_sharesSubject] = newSubKeys;
-    deployedSubjects.push(_sharesSubject);
-    validDeployments[newSubKeys] = true;
-
-    emit ShareSampleCreated(newSubKeys, perc, _sharesSubject);
+    _AddNewSubKeyContract(_sharesSubject, newSubKeys);
 
     return newSubKeys;
+  }
+
+  function _AddNewSubKeyContract(
+    address _sharesSubject,
+    address _newSubKeys
+  ) internal {
+    SubscriptionPool(subPoolContract).addContractToPermissionGroup(
+      groupId,
+      _newSubKeys
+    );
+    // Update the mapping and the array
+    subjectToContract[_sharesSubject] = _newSubKeys;
+    deployedSubjects.push(_sharesSubject);
+    validDeployments[_newSubKeys] = true;
+
+    emit ShareSampleCreated(_newSubKeys, perc, _sharesSubject);
   }
 
   function getDeployedContracts()

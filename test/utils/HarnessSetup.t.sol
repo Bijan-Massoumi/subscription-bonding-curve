@@ -8,7 +8,10 @@ import "../../src/SubscriptionPool.sol";
 import "forge-std/console.sol";
 
 contract KeyHarness is SubscriptionKeys {
-  constructor() SubscriptionKeys(1, address(1), address(1), address(1), 1) {}
+  constructor(
+    address factory,
+    address keyOwner
+  ) SubscriptionKeys(1, keyOwner, address(1), factory) {}
 
   // get historicalPriceChanges
   function exposedGetHistoricalPriceChanges()
@@ -37,6 +40,34 @@ contract KeyHarness is SubscriptionKeys {
   function exposedUpdatePriceOracle(uint256 newPrice) external {
     return _updatePriceOracle(newPrice);
   }
+
+  // First, we will expose the internal methods we want to test using the Harness.
+  function exposedVerifyAndCollectFees(
+    Common.ContractInfo[] memory traderContracts,
+    address trader,
+    uint256 lastDepositTime,
+    Proof[] calldata proofs
+  ) public returns (uint256) {
+    return
+      harness._verifyAndCollectFees(
+        traderContracts,
+        trader,
+        lastDepositTime,
+        proofs
+      );
+  }
+}
+
+// KEYFACTORY HARNESS
+contract KeyFactoryHarness is KeyFactory {
+  constructor(address pool) KeyFactory(pool) {}
+
+  function exposedAddNewSubKeyContract(
+    address subject,
+    address subPool
+  ) external {
+    _AddNewSubKeyContract(subject, subPool);
+  }
 }
 
 abstract contract HarnessSetup is Test {
@@ -45,7 +76,10 @@ abstract contract HarnessSetup is Test {
   address owner = address(1);
   address addr1 = address(2);
   address addr2 = address(3);
-  KeyHarness harnass;
+
+  uint256 groupId;
+  KeyHarness harness;
+  KeyFactoryHarness keyFactory;
 
   SubscriptionKeys key1;
   SubscriptionKeys key2;
@@ -53,7 +87,17 @@ abstract contract HarnessSetup is Test {
   function setUp() public {
     subPool = new SubscriptionPool();
 
+    vm.deal(owner, 100 ether);
+    vm.deal(addr1, 100 ether);
+    vm.deal(addr2, 100 ether);
+
     vm.startPrank(owner);
-    harnass = new KeyHarness();
+    keyFactory = new KeyFactoryHarness(address(subPool));
+    harness = new KeyHarness(address(keyFactory), owner);
+    keyFactory.exposedAddNewSubKeyContract(owner, address(harness));
+
+    key1 = SubscriptionKeys(keyFactory.createSubKeyContract(addr1));
+    key2 = SubscriptionKeys(keyFactory.createSubKeyContract(addr2));
+    vm.stopPrank();
   }
 }

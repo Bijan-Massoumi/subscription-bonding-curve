@@ -53,13 +53,12 @@ contract SubscriptionKeys {
     uint256 _subscriptionRate,
     address _keySubject,
     address _subPoolContract,
-    address _factoryContract,
-    uint256 _groupId
+    address _factoryContract
   ) {
     keySubject = _keySubject;
     subPoolContract = _subPoolContract;
     factoryContract = _factoryContract;
-    groupId = _groupId;
+    groupId = KeyFactory(_factoryContract).getGroupId();
 
     // first period has no interest rate on buys
     Common.PriceChange memory newPriceChange = Common.PriceChange({

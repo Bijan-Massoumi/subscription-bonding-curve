@@ -7,6 +7,8 @@ import "./Common.sol";
 import "@openzeppelin/contracts/utils/structs/EnumerableMap.sol";
 import "./SubscriptionKeys.sol";
 
+// TODO can a contract be a part of two different groups?
+
 contract SubscriptionPool is ISubscriptionPoolErrors {
   using EnumerableMap for EnumerableMap.AddressToUintMap;
 
