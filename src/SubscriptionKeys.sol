@@ -35,7 +35,7 @@ contract SubscriptionKeys {
   // price changes over the length of the set period
   Common.PriceChange[] recentPriceChanges;
 
-  mapping(address trader => uint256 index) private _traderPriceIndex;
+  mapping(address trader => uint256 index) _traderPriceIndex;
 
   uint256 period = 43_200;
   uint256 periodLastOccuredAt;
@@ -53,13 +53,12 @@ contract SubscriptionKeys {
     uint256 _subscriptionRate,
     address _keySubject,
     address _subPoolContract,
-    address _factoryContract,
-    uint256 _groupId
+    address _factoryContract
   ) {
     keySubject = _keySubject;
     subPoolContract = _subPoolContract;
     factoryContract = _factoryContract;
-    groupId = _groupId;
+    groupId = KeyFactory(_factoryContract).getGroupId();
 
     // first period has no interest rate on buys
     Common.PriceChange memory newPriceChange = Common.PriceChange({
@@ -128,16 +127,15 @@ contract SubscriptionKeys {
     uint256 price = getPrice(supply, amount);
     require(msg.value >= price, "Inusfficient nft price");
     address trader = msg.sender;
-
     // fetch last subscription deposit checkpoint
     Common.SubscriptionPoolCheckpoint memory cp = SubscriptionPool(
       subPoolContract
     ).getSubscriptionPoolCheckpoint(trader, groupId);
-
     // collect fees
     Common.ContractInfo[] memory traderContracts = SubscriptionPool(
       subPoolContract
     ).getTraderContracts(trader, groupId);
+
     uint256 fees = _verifyAndCollectFees(
       traderContracts,
       trader,
@@ -160,7 +158,7 @@ contract SubscriptionKeys {
     // adjust supply
     uint256 newBal = _balances[trader] + amount;
     supply = supply + amount;
-    _balances[trader] = _balances[trader] + amount;
+    _balances[trader] = newBal;
 
     // update checkpoints
     SubscriptionPool(subPoolContract).updateTraderInfo(
@@ -170,7 +168,6 @@ contract SubscriptionKeys {
       newBal
     );
     _updatePriceOracle(price);
-
     // send fees to keySubject
     (bool success, ) = keySubject.call{value: fees}("");
     require(success, "Unable to send funds");
@@ -239,22 +236,7 @@ contract SubscriptionKeys {
           .price;
       }
 
-      Common.PriceChange memory newHistoricalPriceChange = Common.PriceChange({
-        price: averagePrice,
-        rate: historicalPriceChanges[historicalPriceChanges.length - 1].rate,
-        startTimestamp: uint112(currentTime),
-        index: uint16(historicalPriceChanges.length)
-      });
-      historicalPriceChanges.push(newHistoricalPriceChange);
-
-      // Hash chaining
-      bytes32 previousHash = historicalPriceHashes[
-        historicalPriceHashes.length - 1
-      ];
-      bytes32 newHash = keccak256(
-        abi.encode(newHistoricalPriceChange, previousHash)
-      );
-      historicalPriceHashes.push(newHash);
+      _addHistoricalPriceChange(averagePrice, currentTime);
 
       // Reset the recentPriceChanges and update the period's last occurrence time
       delete recentPriceChanges;
@@ -271,6 +253,28 @@ contract SubscriptionKeys {
     });
 
     recentPriceChanges.push(newRecentPriceChange);
+  }
+
+  function _addHistoricalPriceChange(
+    uint256 averagePrice,
+    uint256 currentTime
+  ) internal {
+    Common.PriceChange memory newHistoricalPriceChange = Common.PriceChange({
+      price: averagePrice,
+      rate: historicalPriceChanges[historicalPriceChanges.length - 1].rate,
+      startTimestamp: uint112(currentTime),
+      index: uint16(historicalPriceChanges.length)
+    });
+    historicalPriceChanges.push(newHistoricalPriceChange);
+
+    // Hash chaining
+    bytes32 previousHash = historicalPriceHashes[
+      historicalPriceHashes.length - 1
+    ];
+    bytes32 newHash = keccak256(
+      abi.encode(newHistoricalPriceChange, previousHash)
+    );
+    historicalPriceHashes.push(newHash);
   }
 
   function _verifyAndCollectFees(
@@ -376,6 +380,7 @@ contract SubscriptionKeys {
       uint256 nextTimestamp = i < endIndex
         ? pastPrices[i + 1].startTimestamp
         : block.timestamp;
+
       if (lastCheckpointAt > nextTimestamp) {
         continue;
       }
@@ -438,8 +443,9 @@ contract SubscriptionKeys {
   function getLastTraderPriceIndex(
     address trader
   ) public view returns (uint256) {
+    uint256 bal = balanceOf(trader);
     uint256 idx = _traderPriceIndex[trader];
-    if (idx == 0) {
+    if (idx == 0 && bal == 0) {
       return historicalPriceChanges.length - 1;
     }
 

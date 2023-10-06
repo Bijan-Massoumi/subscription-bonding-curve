@@ -2,10 +2,13 @@
 pragma solidity ^0.8.18;
 
 import "./ISubscriptionPoolErrors.sol";
+import "forge-std/console.sol";
 import "./KeyFactory.sol";
 import "./Common.sol";
 import "@openzeppelin/contracts/utils/structs/EnumerableMap.sol";
 import "./SubscriptionKeys.sol";
+
+// TODO can a contract be a part of two different groups?
 
 contract SubscriptionPool is ISubscriptionPoolErrors {
   using EnumerableMap for EnumerableMap.AddressToUintMap;
