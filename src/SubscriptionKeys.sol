@@ -128,9 +128,10 @@ contract SubscriptionKeys {
     require(msg.value >= price, "Inusfficient nft price");
     address trader = msg.sender;
     // fetch last subscription deposit checkpoint
-    Common.SubscriptionPoolCheckpoint memory cp = SubscriptionPool(
-      subPoolContract
-    ).getSubscriptionPoolCheckpoint(trader, groupId);
+    uint256 deposit = SubscriptionPool(subPoolContract).getSubscriptionPool(
+      trader,
+      groupId
+    );
     // collect fees
     Common.ContractInfo[] memory traderContracts = SubscriptionPool(
       subPoolContract
@@ -151,8 +152,8 @@ contract SubscriptionKeys {
       amount
     );
     uint256 additionalDeposit = msg.value - price;
-    require(additionalDeposit + cp.deposit > fees, "Insufficient pool");
-    uint256 newDeposit = additionalDeposit + cp.deposit - fees;
+    require(additionalDeposit + deposit > fees, "Insufficient pool");
+    uint256 newDeposit = additionalDeposit + deposit - fees;
     require(req <= newDeposit, "Insufficient pool");
 
     // adjust supply
@@ -186,9 +187,10 @@ contract SubscriptionKeys {
     require(currBalance >= amount, "Insufficient keys");
 
     // fetch last subscription deposit checkpoint
-    Common.SubscriptionPoolCheckpoint memory cp = SubscriptionPool(
-      subPoolContract
-    ).getSubscriptionPoolCheckpoint(trader, groupId);
+    uint256 subPool = SubscriptionPool(subPoolContract).getSubscriptionPool(
+      trader,
+      groupId
+    );
 
     // collect fees
     Common.ContractInfo[] memory traderContracts = SubscriptionPool(
@@ -203,7 +205,7 @@ contract SubscriptionKeys {
 
     // update checkpoints
     uint256 newBal = currBalance - amount;
-    uint256 newDeposit = cp.deposit - fees;
+    uint256 newDeposit = subPool - fees;
     SubscriptionPool(subPoolContract).updateTraderInfo(
       trader,
       groupId,

@@ -28,7 +28,7 @@ contract SubscriptionPool is ISubscriptionPoolErrors {
   mapping(uint256 => PermissionGroup) public permissionGroups;
   uint256 public permissionGroupCount = 0;
 
-  mapping(address trader => mapping(uint256 groupId => Common.SubscriptionPoolCheckpoint checkpoint))
+  mapping(address trader => mapping(uint256 groupId => uint256 checkpoint))
     internal _groupedSubscriptionCheckpoints;
   mapping(address => mapping(uint256 => EnumerableMap.AddressToUintMap))
     internal _groupedTraderKeyContractBalances;
@@ -198,10 +198,10 @@ contract SubscriptionPool is ISubscriptionPoolErrors {
     return totalRequirement;
   }
 
-  function getSubscriptionPoolCheckpoint(
+  function getSubscriptionPool(
     address trader,
     uint256 groupId
-  ) public view returns (Common.SubscriptionPoolCheckpoint memory) {
+  ) public view returns (uint256) {
     return _groupedSubscriptionCheckpoints[trader][groupId];
   }
 
@@ -210,39 +210,32 @@ contract SubscriptionPool is ISubscriptionPoolErrors {
     uint256 groupId,
     uint256 newSubPool
   ) internal {
-    Common.SubscriptionPoolCheckpoint
-      storage cp = _groupedSubscriptionCheckpoints[trader][groupId];
-    cp.deposit = newSubPool;
-    cp.lastModifiedAt = block.timestamp;
+    _groupedSubscriptionCheckpoints[trader][groupId] = newSubPool;
   }
 
   // -------------- subscription pool methods ----------------
 
+  // TODO these need to extract fees
+
   function increaseSubscriptionPoolForGroupId(
     uint256 groupId
   ) external payable {
-    Common.SubscriptionPoolCheckpoint memory cp = getSubscriptionPoolCheckpoint(
-      msg.sender,
-      groupId
-    );
+    uint256 subPool = getSubscriptionPool(msg.sender, groupId);
 
-    uint256 newDeposit = cp.deposit + msg.value;
+    uint256 newDeposit = subPool + msg.value;
     _updateTraderPool(msg.sender, groupId, newDeposit);
   }
 
   function decreaseSubscriptionPool(uint256 groupId, uint256 amount) external {
-    Common.SubscriptionPoolCheckpoint memory cp = getSubscriptionPoolCheckpoint(
-      msg.sender,
-      groupId
-    );
+    uint256 subPool = getSubscriptionPool(msg.sender, groupId);
     uint256 req = getCurrentPoolRequirement(msg.sender, groupId);
 
-    require(cp.deposit >= amount, "Insufficient deposit");
+    require(subPool >= amount, "Insufficient deposit");
     require(
-      cp.deposit - amount >= req,
+      subPool - amount >= req,
       "Deposit cannot be less than current requirement"
     );
-    uint256 newDeposit = cp.deposit - amount;
+    uint256 newDeposit = subPool - amount;
     _updateTraderPool(msg.sender, 0, newDeposit);
 
     // Transfer the amount to the trader
