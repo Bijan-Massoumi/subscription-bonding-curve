@@ -211,6 +211,7 @@ contract SubscriptionPool is ISubscriptionPoolErrors {
     uint256 newSubPool
   ) internal {
     _groupedSubscriptionCheckpoints[trader][groupId] = newSubPool;
+    //TODO emit log with timestamp
   }
 
   // -------------- subscription pool methods ----------------
