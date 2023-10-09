@@ -11,23 +11,26 @@ uint256 constant ONE_MONTH = 30 days;
 
 contract FeeCalculationTest is HarnessSetup {
   function _createPriceChanges(
-    uint256 t0
+    uint256 t0,
+    KeyHarness h
   )
     internal
     returns (
       Common.PriceChange[] memory pcs,
       uint256 t1,
       uint256 t2,
-      uint256 t3
+      uint256 t3,
+      uint256 endTime
     )
   {
     t1 = t0 + 2 * ONE_MONTH;
     t2 = t0 + 4 * ONE_MONTH;
     t3 = t0 + 6 * ONE_MONTH;
+    endTime = block.timestamp + 12 * ONE_MONTH;
 
-    harness.exposedAddHistoricalPriceChange(1 ether, t1);
-    harness.exposedAddHistoricalPriceChange(2 ether, t2);
-    harness.exposedAddHistoricalPriceChange(1 ether / 2, t3);
+    h.exposedAddHistoricalPriceChange(1 ether, t1);
+    h.exposedAddHistoricalPriceChange(2 ether, t2);
+    h.exposedAddHistoricalPriceChange(1 ether / 2, t3);
 
     pcs = new Common.PriceChange[](3);
     pcs[0] = Common.PriceChange({
@@ -48,39 +51,35 @@ contract FeeCalculationTest is HarnessSetup {
       startTimestamp: uint112(t3),
       index: 3
     });
+
+    h.exposedSetPeriodLastOccuredAt(endTime);
   }
 
   function testFeeCalculationOneContract() public {
     // Mock some PriceChange values for the proofs
-
-    vm.startPrank(owner);
-    uint256 t0 = block.timestamp;
-    // buy 1 key
-    Proof[] memory proof = new Proof[](1);
-    proof[0] = harness.getPriceProof(owner);
-    harness.buyKeys{value: 2 ether}(1, proof);
+    vm.prank(owner);
     subPool.increaseSubscriptionPoolForGroupId{value: 10 ether}(
       keyFactory.getGroupId()
     );
 
+    _buy(harness, owner);
+
+    vm.startPrank(owner);
+    uint256 t0 = block.timestamp;
     (
       Common.PriceChange[] memory pcs,
       uint256 t1,
       uint256 t2,
-      uint256 t3
-    ) = _createPriceChanges(t0);
-    proof = new Proof[](1);
+      uint256 t3,
+      uint256 endTime
+    ) = _createPriceChanges(t0, harness);
+    Proof[] memory proof = new Proof[](1);
     proof[0] = harness.getPriceProof(owner);
     // confirm that proof[0] == pcs
     assertEqUint(proof[0].pcs[0].price, 0);
     assertEqUint(proof[0].pcs[1].price, pcs[0].price);
     assertEqUint(proof[0].pcs[2].price, pcs[1].price);
     assertEqUint(proof[0].pcs[3].price, pcs[2].price);
-
-    uint256 endTime = block.timestamp + 12 * ONE_MONTH;
-    harness.exposedSetTraderPriceIndex(0, owner);
-    harness.setHistoricalPriceChanges(pcs);
-    harness.exposedSetPeriodLastOccuredAt(endTime);
     vm.warp(endTime);
 
     Common.ContractInfo[] memory traderContracts = subPool.getTraderContracts(
@@ -108,5 +107,60 @@ contract FeeCalculationTest is HarnessSetup {
     );
 
     vm.stopPrank();
+  }
+
+  function testFeeCalculationTwoContracts() public {
+    vm.prank(owner);
+    subPool.increaseSubscriptionPoolForGroupId{value: 10 ether}(
+      keyFactory.getGroupId()
+    );
+    _buy(harness, owner);
+    _buy(harness2, owner);
+
+    vm.startPrank(owner);
+    console.log("post initial buys");
+
+    uint256 t0 = block.timestamp;
+    (
+      ,
+      uint256 t1,
+      uint256 t2,
+      uint256 t3,
+      uint256 endTime
+    ) = _createPriceChanges(t0, harness);
+    _createPriceChanges(t0, harness2);
+
+    Common.ContractInfo[] memory traderContracts = subPool.getTraderContracts(
+      owner,
+      keyFactory.getGroupId()
+    );
+    Proof[] memory proof = _getProofForContracts(owner, harness);
+    assertEqUint(proof.length, 2);
+
+    vm.warp(endTime);
+    uint256 fee = harness.exposedVerifyAndCollectFees(
+      traderContracts,
+      owner,
+      t0,
+      proof
+    );
+
+    uint256 expectedSingle = ComputeUtils._calculateFeeBetweenTimes(
+      0,
+      t0,
+      t1,
+      1000
+    ) +
+      ComputeUtils._calculateFeeBetweenTimes(1 ether, t1, t2, 1000) +
+      ComputeUtils._calculateFeeBetweenTimes(2 ether, t2, t3, 1000) +
+      ComputeUtils._calculateFeeBetweenTimes(0.5 ether, t3, endTime, 1000);
+
+    assertEq(
+      fee,
+      expectedSingle * 2,
+      "The fee does not match the expected value"
+    );
+
+    vm.warp(endTime);
   }
 }
