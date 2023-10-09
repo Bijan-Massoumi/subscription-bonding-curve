@@ -118,8 +118,6 @@ contract FeeCalculationTest is HarnessSetup {
     _buy(harness2, owner);
 
     vm.startPrank(owner);
-    console.log("post initial buys");
-
     uint256 t0 = block.timestamp;
     (
       ,
@@ -162,5 +160,81 @@ contract FeeCalculationTest is HarnessSetup {
     );
 
     vm.warp(endTime);
+  }
+
+  function testFeeCalculationThreeContractsWithOffset() public {
+    vm.prank(owner);
+    subPool.increaseSubscriptionPoolForGroupId{value: 10 ether}(
+      keyFactory.getGroupId()
+    );
+    _buy(harness, owner);
+    _buy(harness2, owner);
+    _buy(harness3, owner);
+
+    vm.startPrank(owner);
+
+    uint256 t0 = block.timestamp;
+    uint256 endTimeFinal;
+    uint256 expected;
+    {
+      (
+        ,
+        uint256 t1,
+        uint256 t2,
+        uint256 t3,
+        uint256 endTime
+      ) = _createPriceChanges(t0, harness);
+      _createPriceChanges(t0, harness2);
+
+      uint256 expectedSingle = ComputeUtils._calculateFeeBetweenTimes(
+        0,
+        t0,
+        t1,
+        1000
+      ) +
+        ComputeUtils._calculateFeeBetweenTimes(1 ether, t1, t2, 1000) +
+        ComputeUtils._calculateFeeBetweenTimes(2 ether, t2, t3, 1000) +
+        ComputeUtils._calculateFeeBetweenTimes(0.5 ether, t3, endTime, 1000);
+
+      expected += expectedSingle * 2;
+      endTimeFinal = endTime;
+    }
+
+    {
+      // Create a third set of price changes that start at t0 + 1 day
+      (, uint256 t11, uint256 t22, uint256 t33, ) = _createPriceChanges(
+        t0 + 1 days,
+        harness3
+      );
+
+      uint256 expectedSecond = ComputeUtils._calculateFeeBetweenTimes(
+        0,
+        t0 + 1 days,
+        t11,
+        1000
+      ) +
+        ComputeUtils._calculateFeeBetweenTimes(1 ether, t11, t22, 1000) +
+        ComputeUtils._calculateFeeBetweenTimes(2 ether, t22, t33, 1000) +
+        ComputeUtils._calculateFeeBetweenTimes(
+          0.5 ether,
+          t33,
+          endTimeFinal,
+          1000
+        );
+
+      expected += expectedSecond;
+    }
+
+    vm.warp(endTimeFinal);
+    Proof[] memory proof = _getProofForContracts(owner, harness);
+    assertEqUint(proof.length, 3);
+    uint256 fee = harness.exposedVerifyAndCollectFees(
+      subPool.getTraderContracts(owner, keyFactory.getGroupId()),
+      owner,
+      t0,
+      proof
+    );
+
+    assertEq(fee, expected, "The fee does not match the expected value");
   }
 }
