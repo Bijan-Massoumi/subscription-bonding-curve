@@ -70,10 +70,10 @@ contract ComputeUtilsTest is Test {
       100 ether, // totalStatedPrice
       0, // startTime
       1 days, // endTime
-      10 // feeRate (1% represented as 10/1000)
+      10
     );
     uint256 expectedFeeNumerator = 100 ether * 1 days * 10;
-    uint256 expectedFee = expectedFeeNumerator / 365 days / 1000; // As feeRate is in thousandths
+    uint256 expectedFee = expectedFeeNumerator / 365 days / 10000; // As feeRate is in thousandths
     assertEq(fee, expectedFee, "Fee does not match expected for one day");
   }
 
@@ -82,10 +82,10 @@ contract ComputeUtilsTest is Test {
       200 ether, // totalStatedPrice
       0, // startTime
       182 days, // endTime (half year)
-      5 // feeRate (0.5% represented as 5/1000)
+      5
     );
     uint256 expectedFeeNumerator = 200 ether * 182 days * 5;
-    uint256 expectedFee = expectedFeeNumerator / 365 days / 1000; // As feeRate is in thousandths
+    uint256 expectedFee = expectedFeeNumerator / 365 days / 10000; // As feeRate is in thousandths
     assertEq(fee, expectedFee, "Fee does not match expected for half year");
   }
 
@@ -94,7 +94,7 @@ contract ComputeUtilsTest is Test {
       150 ether, // totalStatedPrice
       50, // startTime
       50, // endTime (no time elapsed)
-      20 // feeRate (2% represented as 20/1000)
+      20
     );
     assertEq(fee, 0, "Fee should be zero when no time has elapsed");
   }

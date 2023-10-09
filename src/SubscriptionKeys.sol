@@ -31,11 +31,11 @@ contract SubscriptionKeys {
   // historical prices
   Common.PriceChange[] historicalPriceChanges;
   bytes32[] historicalPriceHashes;
-
   // price changes over the length of the set period
   Common.PriceChange[] recentPriceChanges;
 
-  mapping(address trader => uint256 index) _traderPriceIndex;
+  mapping(address trader => uint256 index) _lastHistoricalPriceByTrader;
+  mapping(address trader => uint256 timestamp) _lastTraderInteractionTime;
 
   uint256 period = 43_200;
   uint256 periodLastOccuredAt;
@@ -128,9 +128,10 @@ contract SubscriptionKeys {
     require(msg.value >= price, "Inusfficient nft price");
     address trader = msg.sender;
     // fetch last subscription deposit checkpoint
-    Common.SubscriptionPoolCheckpoint memory cp = SubscriptionPool(
-      subPoolContract
-    ).getSubscriptionPoolCheckpoint(trader, groupId);
+    uint256 deposit = SubscriptionPool(subPoolContract).getSubscriptionPool(
+      trader,
+      groupId
+    );
     // collect fees
     Common.ContractInfo[] memory traderContracts = SubscriptionPool(
       subPoolContract
@@ -139,7 +140,7 @@ contract SubscriptionKeys {
     uint256 fees = _verifyAndCollectFees(
       traderContracts,
       trader,
-      cp.lastModifiedAt,
+      _lastTraderInteractionTime[trader],
       proofs
     );
 
@@ -151,8 +152,8 @@ contract SubscriptionKeys {
       amount
     );
     uint256 additionalDeposit = msg.value - price;
-    require(additionalDeposit + cp.deposit > fees, "Insufficient pool");
-    uint256 newDeposit = additionalDeposit + cp.deposit - fees;
+    require(additionalDeposit + deposit > fees, "Insufficient pool");
+    uint256 newDeposit = additionalDeposit + deposit - fees;
     require(req <= newDeposit, "Insufficient pool");
 
     // adjust supply
@@ -168,6 +169,8 @@ contract SubscriptionKeys {
       newBal
     );
     _updatePriceOracle(price);
+    _lastTraderInteractionTime[trader] = block.timestamp;
+
     // send fees to keySubject
     (bool success, ) = keySubject.call{value: fees}("");
     require(success, "Unable to send funds");
@@ -184,9 +187,10 @@ contract SubscriptionKeys {
     require(currBalance >= amount, "Insufficient keys");
 
     // fetch last subscription deposit checkpoint
-    Common.SubscriptionPoolCheckpoint memory cp = SubscriptionPool(
-      subPoolContract
-    ).getSubscriptionPoolCheckpoint(trader, groupId);
+    uint256 subPool = SubscriptionPool(subPoolContract).getSubscriptionPool(
+      trader,
+      groupId
+    );
 
     // collect fees
     Common.ContractInfo[] memory traderContracts = SubscriptionPool(
@@ -195,13 +199,13 @@ contract SubscriptionKeys {
     uint256 fees = _verifyAndCollectFees(
       traderContracts,
       trader,
-      cp.lastModifiedAt,
+      _lastTraderInteractionTime[trader],
       proofs
     );
 
     // update checkpoints
     uint256 newBal = currBalance - amount;
-    uint256 newDeposit = cp.deposit - fees;
+    uint256 newDeposit = subPool - fees;
     SubscriptionPool(subPoolContract).updateTraderInfo(
       trader,
       groupId,
@@ -209,6 +213,7 @@ contract SubscriptionKeys {
       newBal
     );
     _updatePriceOracle(price);
+    _lastTraderInteractionTime[trader] = block.timestamp;
 
     _balances[msg.sender] = newBal;
     supply = supply - amount;
@@ -380,7 +385,6 @@ contract SubscriptionKeys {
       uint256 nextTimestamp = i < endIndex
         ? pastPrices[i + 1].startTimestamp
         : block.timestamp;
-
       if (lastCheckpointAt > nextTimestamp) {
         continue;
       }
@@ -411,19 +415,13 @@ contract SubscriptionKeys {
       "Invalid artist contract"
     );
 
-    bool valid = historicalPriceHashes[historicalPriceHashes.length - 1] == h;
-    if (valid) {
-      _traderPriceIndex[trader] = historicalPriceChanges.length - 1;
-      return true;
-    }
-
-    return false;
+    return verifyHash(h, trader);
   }
 
   function verifyHash(bytes32 h, address trader) internal returns (bool) {
     bool valid = historicalPriceHashes[historicalPriceHashes.length - 1] == h;
     if (valid) {
-      _traderPriceIndex[trader] = historicalPriceChanges.length - 1;
+      _lastHistoricalPriceByTrader[trader] = historicalPriceChanges.length - 1;
       return true;
     }
 
@@ -444,8 +442,8 @@ contract SubscriptionKeys {
     address trader
   ) public view returns (uint256) {
     uint256 bal = balanceOf(trader);
-    uint256 idx = _traderPriceIndex[trader];
-    if (idx == 0 && bal == 0) {
+    uint256 idx = _lastHistoricalPriceByTrader[trader];
+    if (bal == 0) {
       return historicalPriceChanges.length - 1;
     }
 

@@ -28,14 +28,6 @@ contract KeyHarness is SubscriptionKeys {
     periodLastOccuredAt = timestamp;
   }
 
-  function setHistoricalPriceChanges(
-    Common.PriceChange[] memory changes
-  ) external {
-    for (uint256 i = 0; i < changes.length; i++) {
-      historicalPriceChanges.push(changes[i]);
-    }
-  }
-
   function exposedAddHistoricalPriceChange(
     uint256 averagePrice,
     uint256 currentTime
@@ -43,12 +35,12 @@ contract KeyHarness is SubscriptionKeys {
     _addHistoricalPriceChange(averagePrice, currentTime);
   }
 
-  // set _traderPriceIndex
+  // set _lastHistoricalPriceByTrader
   function exposedSetTraderPriceIndex(
     uint256 newIndex,
     address trader
   ) external {
-    _traderPriceIndex[trader] = newIndex;
+    _lastHistoricalPriceByTrader[trader] = newIndex;
   }
 
   // get recentPriceChanges
@@ -105,8 +97,49 @@ abstract contract HarnessSetup is Test {
   KeyHarness harness;
   KeyFactoryHarness keyFactory;
 
-  SubscriptionKeys key1;
-  SubscriptionKeys key2;
+  KeyHarness harness2;
+  KeyHarness harness3;
+
+  function _buy(KeyHarness h, address trader) internal {
+    Proof[] memory proof = _getProofForContracts(trader, h);
+    vm.prank(owner);
+    h.buyKeys{value: 2 ether}(1, proof);
+  }
+
+  function _getProofForContracts(
+    address trader,
+    KeyHarness h
+  ) internal view returns (Proof[] memory) {
+    Common.ContractInfo[] memory ci = subPool.getTraderContracts(
+      trader,
+      keyFactory.getGroupId()
+    );
+
+    // 1. Check if h address is in ci
+    bool isHInCi = false;
+    for (uint256 j = 0; j < ci.length; j++) {
+      if (address(ci[j].keyContract) == address(h)) {
+        isHInCi = true;
+        break;
+      }
+    }
+
+    // 2. Adjust the size of proof array based on the presence of h in ci
+    uint256 proofLength = isHInCi ? ci.length : ci.length + 1;
+    Proof[] memory proof = new Proof[](proofLength);
+
+    // 3. Populate the proof array
+    for (uint256 i = 0; i < ci.length; i++) {
+      proof[i] = KeyHarness(ci[i].keyContract).getPriceProof(trader);
+    }
+
+    // If h was not in ci, get its getPriceProof and assign it to the last position in proof
+    if (!isHInCi) {
+      proof[ci.length] = h.getPriceProof(trader);
+    }
+
+    return proof;
+  }
 
   function setUp() public {
     subPool = new SubscriptionPool();
@@ -120,8 +153,12 @@ abstract contract HarnessSetup is Test {
     harness = new KeyHarness(address(keyFactory), owner, address(subPool));
     keyFactory.exposedAddNewSubKeyContract(owner, address(harness));
 
-    key1 = SubscriptionKeys(keyFactory.createSubKeyContract(addr1));
-    key2 = SubscriptionKeys(keyFactory.createSubKeyContract(addr2));
+    harness2 = new KeyHarness(address(keyFactory), owner, address(subPool));
+    keyFactory.exposedAddNewSubKeyContract(owner, address(harness2));
+
+    harness3 = new KeyHarness(address(keyFactory), owner, address(subPool));
+    keyFactory.exposedAddNewSubKeyContract(owner, address(harness3));
+
     vm.stopPrank();
   }
 }
