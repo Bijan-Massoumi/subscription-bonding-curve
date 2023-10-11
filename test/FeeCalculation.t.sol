@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MITs
-pragma solidity ^0.8.18;
+pragma solidity ^0.8.20;
 
 import "forge-std/Test.sol";
 import "forge-std/console.sol";
@@ -12,7 +12,7 @@ uint256 constant ONE_MONTH = 30 days;
 contract FeeCalculationTest is HarnessSetup {
   function _createPriceChanges(
     uint256 t0,
-    KeyHarness h
+    address keySubject
   )
     internal
     returns (
@@ -52,17 +52,12 @@ contract FeeCalculationTest is HarnessSetup {
       index: 3
     });
 
-    h.exposedSetPeriodLastOccuredAt(endTime);
+    h.exposedSetPeriodLastOccuredAt(keySubject, endTime);
   }
 
   function testFeeCalculationOneContract() public {
     // Mock some PriceChange values for the proofs
-    vm.prank(owner);
-    subPool.increaseSubscriptionPoolForGroupId{value: 10 ether}(
-      keyFactory.getGroupId()
-    );
-
-    _buy(harness, owner);
+    _buy(owner, owner);
 
     vm.startPrank(owner);
     uint256 t0 = block.timestamp;
@@ -72,9 +67,9 @@ contract FeeCalculationTest is HarnessSetup {
       uint256 t2,
       uint256 t3,
       uint256 endTime
-    ) = _createPriceChanges(t0, harness);
+    ) = _createPriceChanges(t0, owner);
     Proof[] memory proof = new Proof[](1);
-    proof[0] = harness.getPriceProof(owner);
+    proof[0] = harness.getPriceProof(owner, owner);
     // confirm that proof[0] == pcs
     assertEqUint(proof[0].pcs[0].price, 0);
     assertEqUint(proof[0].pcs[1].price, pcs[0].price);
@@ -82,17 +77,14 @@ contract FeeCalculationTest is HarnessSetup {
     assertEqUint(proof[0].pcs[3].price, pcs[2].price);
     vm.warp(endTime);
 
-    Common.ContractInfo[] memory traderContracts = subPool.getTraderContracts(
-      owner,
-      keyFactory.getGroupId()
-    );
-    assertEqUint(traderContracts.length, 1);
-    assertEq(traderContracts[0].keyContract, address(harness));
+    Common.SubjectTraderInfo[] memory subInfo = getTraderContracts(owner);
+    assertEqUint(subInfo.length, 1);
+    assertEq(subInfo[0].keySubject, owner);
 
     uint256 fee = harness.exposedVerifyAndCollectFees(
-      traderContracts,
+      subInfo,
       owner,
-      t0,
+      owner,
       proof
     );
 
@@ -111,11 +103,8 @@ contract FeeCalculationTest is HarnessSetup {
 
   function testFeeCalculationTwoContracts() public {
     vm.prank(owner);
-    subPool.increaseSubscriptionPoolForGroupId{value: 10 ether}(
-      keyFactory.getGroupId()
-    );
-    _buy(harness, owner);
-    _buy(harness2, owner);
+    _buy(owner, owner);
+    _buy(addr1, owner);
 
     vm.startPrank(owner);
     uint256 t0 = block.timestamp;
@@ -125,21 +114,20 @@ contract FeeCalculationTest is HarnessSetup {
       uint256 t2,
       uint256 t3,
       uint256 endTime
-    ) = _createPriceChanges(t0, harness);
-    _createPriceChanges(t0, harness2);
+    ) = _createPriceChanges(t0, owner);
+    _createPriceChanges(t0, addr1);
 
-    Common.ContractInfo[] memory traderContracts = subPool.getTraderContracts(
-      owner,
-      keyFactory.getGroupId()
+    Common.SubjectTraderInfo[] memory subInfo = harness.getTraderContracts(
+      owner
     );
-    Proof[] memory proof = _getProofForContracts(owner, harness);
+    Proof[] memory proof = _getProofForSubjects(owner, owner);
     assertEqUint(proof.length, 2);
 
     vm.warp(endTime);
     uint256 fee = harness.exposedVerifyAndCollectFees(
-      traderContracts,
+      subInfo,
       owner,
-      t0,
+      owner,
       proof
     );
 
@@ -164,12 +152,9 @@ contract FeeCalculationTest is HarnessSetup {
 
   function testFeeCalculationThreeContractsWithOffset() public {
     vm.prank(owner);
-    subPool.increaseSubscriptionPoolForGroupId{value: 10 ether}(
-      keyFactory.getGroupId()
-    );
-    _buy(harness, owner);
-    _buy(harness2, owner);
-    _buy(harness3, owner);
+    _buy(owner, owner);
+    _buy(addr1, owner);
+    _buy(addr2, owner);
 
     vm.startPrank(owner);
 
@@ -183,8 +168,8 @@ contract FeeCalculationTest is HarnessSetup {
         uint256 t2,
         uint256 t3,
         uint256 endTime
-      ) = _createPriceChanges(t0, harness);
-      _createPriceChanges(t0, harness2);
+      ) = _createPriceChanges(t0, owner);
+      _createPriceChanges(t0, addr1);
 
       uint256 expectedSingle = ComputeUtils._calculateFeeBetweenTimes(
         0,
@@ -204,7 +189,7 @@ contract FeeCalculationTest is HarnessSetup {
       // Create a third set of price changes that start at t0 + 1 day
       (, uint256 t11, uint256 t22, uint256 t33, ) = _createPriceChanges(
         t0 + 1 days,
-        harness3
+        addr2
       );
 
       uint256 expectedSecond = ComputeUtils._calculateFeeBetweenTimes(
@@ -226,10 +211,10 @@ contract FeeCalculationTest is HarnessSetup {
     }
 
     vm.warp(endTimeFinal);
-    Proof[] memory proof = _getProofForContracts(owner, harness);
+    Proof[] memory proof = _getProofForSubjects(owner, owner);
     assertEqUint(proof.length, 3);
     uint256 fee = harness.exposedVerifyAndCollectFees(
-      subPool.getTraderContracts(owner, keyFactory.getGroupId()),
+      harness.getTraderContracts(owner, owner),
       owner,
       t0,
       proof
