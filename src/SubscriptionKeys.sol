@@ -2,6 +2,7 @@
 pragma solidity ^0.8.20;
 
 import {SubscriptionPool} from "./SubscriptionPool.sol";
+import {ISubscriptionKeysErrors} from "./errors/ISubscriptionKeysErrors.sol";
 import "./ComputeUtils.sol";
 import "./Common.sol";
 import {TraderKeyTracker} from "./TraderKeyTracker.sol";
@@ -12,8 +13,17 @@ struct Proof {
   Common.PriceChange[] pcs;
 }
 
+struct TraderInfoForSubject {
+  uint128 lastHistoricalPriceIdx;
+  uint128 lastInteractionTime;
+}
+
 // TODO add method that liquidates all users, it should give a gas refund, it should revert if there are no users to liquidate
-contract SubscriptionKeys is TraderKeyTracker, SubscriptionPool {
+contract SubscriptionKeys is
+  TraderKeyTracker,
+  SubscriptionPool,
+  ISubscriptionKeysErrors
+{
   event Trade(
     address trader,
     address subject,
@@ -34,10 +44,10 @@ contract SubscriptionKeys is TraderKeyTracker, SubscriptionPool {
   mapping(address keySubject => bytes32[]) private historicalPriceHashes;
   mapping(address keySubject => Common.PriceChange[])
     internal recentPriceChanges;
-  mapping(address keySubject => mapping(address => uint256))
-    internal _lastHistoricalPriceByTrader;
-  mapping(address keySubject => mapping(address => uint256))
-    internal _lastTraderInteractionTime;
+
+  mapping(address keySubject => mapping(address trader => TraderInfoForSubject))
+    internal traderInfos;
+
   mapping(address keySubject => uint256) internal periodLastOccuredAt;
 
   // This mapping is used to check if a keySubject is already initialized
@@ -152,7 +162,6 @@ contract SubscriptionKeys is TraderKeyTracker, SubscriptionPool {
     _updateOwnedSubjectSet(newBal, trader, keySubject);
     _updateTraderPool(trader, newDeposit);
     _updatePriceOracle(keySubject, price);
-    _lastTraderInteractionTime[keySubject][trader] = block.timestamp;
 
     // send fees to keySubject
     (bool success, ) = keySubject.call{value: fees}("");
@@ -190,7 +199,6 @@ contract SubscriptionKeys is TraderKeyTracker, SubscriptionPool {
     _updateOwnedSubjectSet(newBal, trader, keySubject);
     _updateTraderPool(trader, newDeposit);
     _updatePriceOracle(keySubject, price);
-    _lastTraderInteractionTime[keySubject][trader] = block.timestamp;
 
     (bool success1, ) = msg.sender.call{value: price}("");
     (bool success2, ) = keySubject.call{value: fees}("");
@@ -285,7 +293,7 @@ contract SubscriptionKeys is TraderKeyTracker, SubscriptionPool {
         fees += _calculateFeeForSubject(info, trader, proofs);
       }
     }
-    require(found, "No proof for buying keySubject");
+    if (!found) revert SubjectProofMissing({subject: buySubject});
 
     return fees;
   }
@@ -319,22 +327,23 @@ contract SubscriptionKeys is TraderKeyTracker, SubscriptionPool {
 
     for (uint256 j = 0; j < proofs.length; j++) {
       if (proofs[j].keySubject == subjectInfo.keySubject) {
-        uint256 lastInteractionTime = _lastTraderInteractionTime[
-          subjectInfo.keySubject
-        ][trader];
+        TraderInfoForSubject memory info = traderInfos[subjectInfo.keySubject][
+          trader
+        ];
+        uint256 lastInteractionTime = uint256(info.lastInteractionTime);
         (uint256 fee, bytes32 h) = getFeeWithFinalHash(
           lastInteractionTime,
           initialHash,
           proofs[j],
           subjectInfo.balance
         );
-        require(verifyHash(h, subjectInfo.keySubject, trader), "Invalid proof");
+        verifyHash(h, subjectInfo.keySubject, trader);
 
         return fee;
       }
     }
 
-    revert("No matching Proof found for keySubject");
+    revert SubjectProofMissing({subject: subjectInfo.keySubject});
   }
 
   // ------------ fee calculation methods ----------------
@@ -357,6 +366,8 @@ contract SubscriptionKeys is TraderKeyTracker, SubscriptionPool {
       uint256 nextTimestamp = i < endIndex
         ? pastPrices[i + 1].startTimestamp
         : block.timestamp;
+
+      // if Proof contains elements before their last iteraction index don't count toward fee
       if (lastInteractionTime > nextTimestamp) {
         continue;
       }
@@ -378,19 +389,17 @@ contract SubscriptionKeys is TraderKeyTracker, SubscriptionPool {
     return (totalFee, currentHash);
   }
 
-  function verifyHash(
-    bytes32 h,
-    address keySubject,
-    address trader
-  ) internal returns (bool) {
-    bytes32[] memory his = historicalPriceHashes[keySubject];
-    bool valid = his[his.length - 1] == h;
-    if (valid) {
-      _lastHistoricalPriceByTrader[keySubject][trader] = his.length - 1;
-      return true;
-    }
+  function verifyHash(bytes32 h, address keySubject, address trader) internal {
+    bytes32[] storage his = historicalPriceHashes[keySubject];
 
-    return false;
+    // Check if the hash is valid
+    bool valid = his[his.length - 1] == h;
+    if (!valid) revert InvalidProof({subject: keySubject});
+
+    // Update the trader information with the new historical price index and interaction time
+    TraderInfoForSubject storage info = traderInfos[keySubject][trader];
+    info.lastHistoricalPriceIdx = uint128(his.length - 1);
+    info.lastInteractionTime = uint128(block.timestamp);
   }
 
   function getStartHash(
@@ -414,7 +423,9 @@ contract SubscriptionKeys is TraderKeyTracker, SubscriptionPool {
     address trader
   ) public view returns (uint256) {
     uint256 bal = balanceOf(keySubject, trader);
-    uint256 idx = _lastHistoricalPriceByTrader[keySubject][trader];
+
+    TraderInfoForSubject memory info = traderInfos[keySubject][trader];
+    uint256 idx = uint256(info.lastHistoricalPriceIdx);
     if (bal == 0) {
       return historicalPriceChanges[keySubject].length - 1;
     }
@@ -455,7 +466,7 @@ contract SubscriptionKeys is TraderKeyTracker, SubscriptionPool {
     uint256 newDeposit = existingDeposit + msg.value - fees;
 
     uint256 req = _getUnchangingPoolRequirement(trader, address(0));
-    require(req <= newDeposit, "Insufficient pool");
+    if (req > newDeposit) revert InsufficientSubscriptionPool();
 
     _updateTraderPool(trader, newDeposit);
   }
@@ -480,7 +491,7 @@ contract SubscriptionKeys is TraderKeyTracker, SubscriptionPool {
 
     uint256 req = _getUnchangingPoolRequirement(trader, address(0));
 
-    require(req <= newDeposit, "Insufficient pool");
+    if (req > newDeposit) revert InsufficientSubscriptionPool();
 
     _updateTraderPool(trader, newDeposit);
 

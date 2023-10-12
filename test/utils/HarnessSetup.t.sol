@@ -32,15 +32,6 @@ contract KeyHarness is SubscriptionKeys {
     _addHistoricalPriceChange(keySubject, averagePrice, currentTime);
   }
 
-  // set _lastHistoricalPriceByTrader
-  function exposedSetTraderPriceIndex(
-    address keySubject,
-    uint256 newIndex,
-    address trader
-  ) external {
-    _lastHistoricalPriceByTrader[keySubject][trader] = newIndex;
-  }
-
   // get recentPriceChanges
   function exposedGetRecentPriceChanges(
     address keySubject

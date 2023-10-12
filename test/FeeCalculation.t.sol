@@ -5,11 +5,12 @@ import "forge-std/Test.sol";
 import "forge-std/console.sol";
 import "./utils/HarnessSetup.t.sol";
 import "../src/SubscriptionKeys.sol";
+import {ISubscriptionKeysErrors} from "../src/errors/ISubscriptionKeysErrors.sol";
 import "../src/ComputeUtils.sol";
 
 uint256 constant ONE_MONTH = 30 days;
 
-contract FeeCalculationTest is HarnessSetup {
+contract FeeCalculationTest is HarnessSetup, ISubscriptionKeysErrors {
   function _createPriceChanges(
     uint256 t0,
     address keySubject
@@ -223,5 +224,55 @@ contract FeeCalculationTest is HarnessSetup {
     );
 
     assertEq(fee, expected, "The fee does not match the expected value");
+  }
+
+  function testMissingProofs() public {
+    vm.prank(owner);
+    _buy(owner, owner);
+    _buy(owner, addr1);
+    _buy(owner, addr2);
+
+    vm.startPrank(owner);
+    uint256 t0 = block.timestamp;
+    _createPriceChanges(t0, owner);
+    _createPriceChanges(t0, addr1);
+    // Create a third set of price changes that start at t0 + 1 day
+    (, , , , uint256 endTime) = _createPriceChanges(t0 + 1 days, addr2);
+
+    vm.warp(endTime);
+    Proof[] memory proof = _getProofForSubjects(owner, owner);
+    assertEqUint(proof.length, 3);
+
+    Proof[] memory invalidProof = removeProof(proof, owner);
+    assertEqUint(invalidProof.length, 2);
+
+    Common.SubjectTraderInfo[] memory subInfos = harness.getTraderSubjectInfo(
+      owner
+    );
+    vm.expectRevert(
+      abi.encodeWithSelector(SubjectProofMissing.selector, owner)
+    );
+    harness.exposedVerifyAndCollectFees(subInfos, owner, owner, invalidProof);
+
+    invalidProof = removeProof(proof, addr1);
+    vm.expectRevert(
+      abi.encodeWithSelector(SubjectProofMissing.selector, addr1)
+    );
+    harness.exposedVerifyAndCollectFees(subInfos, owner, owner, invalidProof);
+  }
+
+  function removeProof(
+    Proof[] memory proof,
+    address keySubject
+  ) internal pure returns (Proof[] memory) {
+    Proof[] memory newProof = new Proof[](proof.length - 1);
+    uint256 j = 0;
+    for (uint256 i = 0; i < proof.length; i++) {
+      if (proof[i].keySubject != keySubject) {
+        newProof[j] = proof[i];
+        j++;
+      }
+    }
+    return newProof;
   }
 }
