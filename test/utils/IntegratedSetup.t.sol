@@ -1,33 +1,29 @@
 // SPDX-License-Identifier: MIT
 
-pragma solidity ^0.8.18;
+pragma solidity ^0.8.20;
 
 import "forge-std/Test.sol";
-import "../../src/KeyFactory.sol";
-import "../../src/SubscriptionPool.sol";
+import "../../src/SubscriptionKeys.sol";
 import "forge-std/console.sol";
 
 abstract contract IntegratedSetup is Test {
   address withdrawAddr = address(1137);
-  SubscriptionPool subPool;
   address owner = address(1);
   address addr1 = address(2);
   address addr2 = address(3);
-  KeyFactory keyFactory;
 
-  SubscriptionKeys key1;
-  SubscriptionKeys key2;
+  SubscriptionKeys subKey;
 
   function setUp() public {
-    subPool = new SubscriptionPool();
+    vm.prank(owner);
+    subKey = new SubscriptionKeys();
+    vm.prank(owner);
+    subKey.initializeKeySubject(1000);
 
-    vm.startPrank(owner);
-    keyFactory = new KeyFactory(address(subPool));
-    address key1Addr = keyFactory.createSubKeyContract(addr1);
-    key1 = SubscriptionKeys(key1Addr);
+    vm.prank(addr1);
+    subKey.initializeKeySubject(1000);
 
-    address key2Addr = keyFactory.createSubKeyContract(addr2);
-    key2 = SubscriptionKeys(key2Addr);
-    vm.stopPrank();
+    vm.prank(addr2);
+    subKey.initializeKeySubject(1000);
   }
 }

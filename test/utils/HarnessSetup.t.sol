@@ -1,55 +1,51 @@
 // SPDX-License-Identifier: MIT
 
-pragma solidity ^0.8.18;
+pragma solidity ^0.8.20;
 
 import "forge-std/Test.sol";
-import "../../src/KeyFactory.sol";
-import "../../src/SubscriptionPool.sol";
+import "../../src/SubscriptionKeys.sol";
 import "forge-std/console.sol";
 
 contract KeyHarness is SubscriptionKeys {
-  constructor(
-    address factory,
-    address keyOwner,
-    address subPoolContract
-  ) SubscriptionKeys(1000, keyOwner, subPoolContract, factory) {}
+  constructor() SubscriptionKeys() {}
 
   // get historicalPriceChanges
-  function exposedGetHistoricalPriceChanges()
-    external
-    view
-    returns (Common.PriceChange[] memory)
-  {
-    return historicalPriceChanges;
+  function exposedGetHistoricalPriceChanges(
+    address subject
+  ) external view returns (Common.PriceChange[] memory) {
+    return historicalPriceChanges[subject];
   }
 
   // set periodLastOccuredAt
-  function exposedSetPeriodLastOccuredAt(uint256 timestamp) external {
-    periodLastOccuredAt = timestamp;
+  function exposedSetPeriodLastOccuredAt(
+    address keySubject,
+    uint256 timestamp
+  ) external {
+    periodLastOccuredAt[keySubject] = timestamp;
   }
 
   function exposedAddHistoricalPriceChange(
+    address keySubject,
     uint256 averagePrice,
     uint256 currentTime
   ) external {
-    _addHistoricalPriceChange(averagePrice, currentTime);
+    _addHistoricalPriceChange(keySubject, averagePrice, currentTime);
   }
 
   // set _lastHistoricalPriceByTrader
   function exposedSetTraderPriceIndex(
+    address keySubject,
     uint256 newIndex,
     address trader
   ) external {
-    _lastHistoricalPriceByTrader[trader] = newIndex;
+    _lastHistoricalPriceByTrader[keySubject][trader] = newIndex;
   }
 
   // get recentPriceChanges
-  function exposedGetRecentPriceChanges()
-    external
-    view
-    returns (Common.PriceChange[] memory)
-  {
-    return recentPriceChanges;
+  function exposedGetRecentPriceChanges(
+    address keySubject
+  ) external view returns (Common.PriceChange[] memory) {
+    return recentPriceChanges[keySubject];
   }
 
   // get period
@@ -58,67 +54,47 @@ contract KeyHarness is SubscriptionKeys {
   }
 
   // Deploy this contract then call this method to test `myInternalMethod`.
-  function exposedUpdatePriceOracle(uint256 newPrice) external {
-    return _updatePriceOracle(newPrice);
+  function exposedUpdatePriceOracle(
+    address keySubject,
+    uint256 newPrice
+  ) external {
+    return _updatePriceOracle(keySubject, newPrice);
   }
 
   // First, we will expose the internal methods we want to test using the Harness.
   function exposedVerifyAndCollectFees(
-    Common.ContractInfo[] memory traderContracts,
+    Common.SubjectTraderInfo[] memory subInfo,
+    address buySubject,
     address trader,
-    uint256 lastDepositTime,
     Proof[] calldata proofs
   ) public returns (uint256) {
-    return
-      _verifyAndCollectFees(traderContracts, trader, lastDepositTime, proofs);
-  }
-}
-
-// KEYFACTORY HARNESS
-contract KeyFactoryHarness is KeyFactory {
-  constructor(address pool) KeyFactory(pool) {}
-
-  function exposedAddNewSubKeyContract(
-    address subject,
-    address subPool
-  ) external {
-    _AddNewSubKeyContract(subject, subPool);
+    return _verifyAndCollectFees(subInfo, buySubject, trader, proofs);
   }
 }
 
 abstract contract HarnessSetup is Test {
   address withdrawAddr = address(1137);
-  SubscriptionPool subPool;
   address owner = address(1);
   address addr1 = address(2);
   address addr2 = address(3);
-
-  uint256 groupId;
   KeyHarness harness;
-  KeyFactoryHarness keyFactory;
 
-  KeyHarness harness2;
-  KeyHarness harness3;
-
-  function _buy(KeyHarness h, address trader) internal {
-    Proof[] memory proof = _getProofForContracts(trader, h);
-    vm.prank(owner);
-    h.buyKeys{value: 2 ether}(1, proof);
+  function _buy(address trader, address subject) internal {
+    Proof[] memory proof = _getProofForSubjects(trader, subject);
+    vm.prank(trader);
+    harness.buyKeys{value: 5 ether}(subject, 1, proof);
   }
 
-  function _getProofForContracts(
+  function _getProofForSubjects(
     address trader,
-    KeyHarness h
+    address subject
   ) internal view returns (Proof[] memory) {
-    Common.ContractInfo[] memory ci = subPool.getTraderContracts(
-      trader,
-      keyFactory.getGroupId()
-    );
+    Common.SubjectTraderInfo[] memory ci = harness.getTraderSubjectInfo(trader);
 
     // 1. Check if h address is in ci
     bool isHInCi = false;
     for (uint256 j = 0; j < ci.length; j++) {
-      if (address(ci[j].keyContract) == address(h)) {
+      if (address(ci[j].keySubject) == subject) {
         isHInCi = true;
         break;
       }
@@ -130,35 +106,31 @@ abstract contract HarnessSetup is Test {
 
     // 3. Populate the proof array
     for (uint256 i = 0; i < ci.length; i++) {
-      proof[i] = KeyHarness(ci[i].keyContract).getPriceProof(trader);
+      proof[i] = harness.getPriceProof(ci[i].keySubject, trader);
     }
 
     // If h was not in ci, get its getPriceProof and assign it to the last position in proof
     if (!isHInCi) {
-      proof[ci.length] = h.getPriceProof(trader);
+      proof[ci.length] = harness.getPriceProof(subject, trader);
     }
 
     return proof;
   }
 
   function setUp() public {
-    subPool = new SubscriptionPool();
-
     vm.deal(owner, 100 ether);
     vm.deal(addr1, 100 ether);
     vm.deal(addr2, 100 ether);
 
     vm.startPrank(owner);
-    keyFactory = new KeyFactoryHarness(address(subPool));
-    harness = new KeyHarness(address(keyFactory), owner, address(subPool));
-    keyFactory.exposedAddNewSubKeyContract(owner, address(harness));
-
-    harness2 = new KeyHarness(address(keyFactory), owner, address(subPool));
-    keyFactory.exposedAddNewSubKeyContract(owner, address(harness2));
-
-    harness3 = new KeyHarness(address(keyFactory), owner, address(subPool));
-    keyFactory.exposedAddNewSubKeyContract(owner, address(harness3));
-
+    harness = new KeyHarness();
+    harness.initializeKeySubject(1000);
     vm.stopPrank();
+
+    vm.prank(addr1);
+    harness.initializeKeySubject(1000);
+
+    vm.prank(addr2);
+    harness.initializeKeySubject(1000);
   }
 }

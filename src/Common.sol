@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.18;
+pragma solidity ^0.8.20;
 
 library Common {
-  struct ContractInfo {
-    address keyContract;
+  struct SubjectTraderInfo {
+    address keySubject;
     uint256 balance;
   }
 
