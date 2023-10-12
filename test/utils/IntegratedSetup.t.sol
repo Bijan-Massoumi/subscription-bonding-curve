@@ -17,6 +17,8 @@ abstract contract IntegratedSetup is Test {
   function setUp() public {
     vm.prank(owner);
     subKey = new SubscriptionKeys();
+    vm.prank(owner);
+    subKey.initializeKeySubject(1000);
 
     vm.prank(addr1);
     subKey.initializeKeySubject(1000);

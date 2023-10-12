@@ -10,12 +10,12 @@ import "../src/SubscriptionKeys.sol";
 contract PriceOracleTest is HarnessSetup {
   function testPriceOracleWithinPeriod() public {
     uint256 initialPrice = 100;
-    harness.exposedUpdatePriceOracle(initialPrice);
+    harness.exposedUpdatePriceOracle(owner, initialPrice);
 
     Common.PriceChange[] memory recentChanges = harness
-      .exposedGetRecentPriceChanges();
+      .exposedGetRecentPriceChanges(owner);
     Common.PriceChange[] memory historicalChanges = harness
-      .exposedGetHistoricalPriceChanges();
+      .exposedGetHistoricalPriceChanges(owner);
 
     // Confirm recentPriceChanges was appended
     assertTrue(
@@ -41,18 +41,18 @@ contract PriceOracleTest is HarnessSetup {
     uint256 period = harness.exposedGetPeriod() + 1; // 12 hours in seconds
 
     // Initially update the price oracle
-    harness.exposedUpdatePriceOracle(initialPrice);
+    harness.exposedUpdatePriceOracle(owner, initialPrice);
 
     // Warp the time by 12 hours
     vm.warp(block.timestamp + period);
 
     // Update the price oracle again
-    harness.exposedUpdatePriceOracle(newPrice);
+    harness.exposedUpdatePriceOracle(owner, newPrice);
 
     Common.PriceChange[] memory recentChanges = harness
-      .exposedGetRecentPriceChanges();
+      .exposedGetRecentPriceChanges(owner);
     Common.PriceChange[] memory historicalChanges = harness
-      .exposedGetHistoricalPriceChanges();
+      .exposedGetHistoricalPriceChanges(owner);
 
     // Confirm recentPriceChanges was cleared
     assertTrue(
@@ -115,27 +115,27 @@ contract PriceOracleTest is HarnessSetup {
 
     // Adding the initial price
     vm.warp(startTime + 1 hours);
-    harness.exposedUpdatePriceOracle(price1);
+    harness.exposedUpdatePriceOracle(owner, price1);
 
     // Add the second price
     vm.warp(startTime + 4 hours);
-    harness.exposedUpdatePriceOracle(price2);
+    harness.exposedUpdatePriceOracle(owner, price2);
 
     // Add the third price
     vm.warp(startTime + 9 hours);
-    harness.exposedUpdatePriceOracle(price3);
+    harness.exposedUpdatePriceOracle(owner, price3);
 
     // Add the third price
     vm.warp(startTime + 11 hours);
-    harness.exposedUpdatePriceOracle(price4);
+    harness.exposedUpdatePriceOracle(owner, price4);
 
     // Warp to exceed the period and trigger the average calculation
     uint256 period = harness.exposedGetPeriod();
     vm.warp(startTime + period + 1);
-    harness.exposedUpdatePriceOracle(price4);
+    harness.exposedUpdatePriceOracle(owner, price4);
 
     Common.PriceChange[] memory historicalChanges = harness
-      .exposedGetHistoricalPriceChanges();
+      .exposedGetHistoricalPriceChanges(owner);
     // Check if the historical change has the TWAP value
     assertTrue(
       historicalChanges.length == 2,
@@ -158,20 +158,20 @@ contract PriceOracleTest is HarnessSetup {
 
     // Warp the time and update the price oracle
     uint256 period = harness.exposedGetPeriod();
-    harness.exposedUpdatePriceOracle(price1);
+    harness.exposedUpdatePriceOracle(owner, price1);
     vm.warp(block.timestamp + period + 1);
 
-    harness.exposedUpdatePriceOracle(price2);
+    harness.exposedUpdatePriceOracle(owner, price2);
     vm.warp(block.timestamp + 2 * period + 2);
 
-    harness.exposedUpdatePriceOracle(price3);
+    harness.exposedUpdatePriceOracle(owner, price3);
     vm.warp(block.timestamp + 3 * period + 3);
 
     // trigger the average calculation
-    harness.exposedUpdatePriceOracle(price3);
+    harness.exposedUpdatePriceOracle(owner, price3);
 
     Common.PriceChange[] memory historicalChanges = harness
-      .exposedGetHistoricalPriceChanges();
+      .exposedGetHistoricalPriceChanges(owner);
 
     assertTrue(
       historicalChanges.length == 4,

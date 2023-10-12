@@ -28,9 +28,9 @@ contract FeeCalculationTest is HarnessSetup {
     t3 = t0 + 6 * ONE_MONTH;
     endTime = block.timestamp + 12 * ONE_MONTH;
 
-    h.exposedAddHistoricalPriceChange(1 ether, t1);
-    h.exposedAddHistoricalPriceChange(2 ether, t2);
-    h.exposedAddHistoricalPriceChange(1 ether / 2, t3);
+    harness.exposedAddHistoricalPriceChange(keySubject, 1 ether, t1);
+    harness.exposedAddHistoricalPriceChange(keySubject, 2 ether, t2);
+    harness.exposedAddHistoricalPriceChange(keySubject, 1 ether / 2, t3);
 
     pcs = new Common.PriceChange[](3);
     pcs[0] = Common.PriceChange({
@@ -52,7 +52,7 @@ contract FeeCalculationTest is HarnessSetup {
       index: 3
     });
 
-    h.exposedSetPeriodLastOccuredAt(keySubject, endTime);
+    harness.exposedSetPeriodLastOccuredAt(keySubject, endTime);
   }
 
   function testFeeCalculationOneContract() public {
@@ -77,7 +77,9 @@ contract FeeCalculationTest is HarnessSetup {
     assertEqUint(proof[0].pcs[3].price, pcs[2].price);
     vm.warp(endTime);
 
-    Common.SubjectTraderInfo[] memory subInfo = getTraderContracts(owner);
+    Common.SubjectTraderInfo[] memory subInfo = harness.getTraderSubjectInfo(
+      owner
+    );
     assertEqUint(subInfo.length, 1);
     assertEq(subInfo[0].keySubject, owner);
 
@@ -104,7 +106,7 @@ contract FeeCalculationTest is HarnessSetup {
   function testFeeCalculationTwoContracts() public {
     vm.prank(owner);
     _buy(owner, owner);
-    _buy(addr1, owner);
+    _buy(owner, addr1);
 
     vm.startPrank(owner);
     uint256 t0 = block.timestamp;
@@ -117,7 +119,7 @@ contract FeeCalculationTest is HarnessSetup {
     ) = _createPriceChanges(t0, owner);
     _createPriceChanges(t0, addr1);
 
-    Common.SubjectTraderInfo[] memory subInfo = harness.getTraderContracts(
+    Common.SubjectTraderInfo[] memory subInfo = harness.getTraderSubjectInfo(
       owner
     );
     Proof[] memory proof = _getProofForSubjects(owner, owner);
@@ -153,8 +155,8 @@ contract FeeCalculationTest is HarnessSetup {
   function testFeeCalculationThreeContractsWithOffset() public {
     vm.prank(owner);
     _buy(owner, owner);
-    _buy(addr1, owner);
-    _buy(addr2, owner);
+    _buy(owner, addr1);
+    _buy(owner, addr2);
 
     vm.startPrank(owner);
 
@@ -214,9 +216,9 @@ contract FeeCalculationTest is HarnessSetup {
     Proof[] memory proof = _getProofForSubjects(owner, owner);
     assertEqUint(proof.length, 3);
     uint256 fee = harness.exposedVerifyAndCollectFees(
-      harness.getTraderContracts(owner, owner),
+      harness.getTraderSubjectInfo(owner),
       owner,
-      t0,
+      owner,
       proof
     );
 

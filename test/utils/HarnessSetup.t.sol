@@ -10,12 +10,10 @@ contract KeyHarness is SubscriptionKeys {
   constructor() SubscriptionKeys() {}
 
   // get historicalPriceChanges
-  function exposedGetHistoricalPriceChanges()
-    external
-    view
-    returns (Common.PriceChange[] memory)
-  {
-    return historicalPriceChanges;
+  function exposedGetHistoricalPriceChanges(
+    address subject
+  ) external view returns (Common.PriceChange[] memory) {
+    return historicalPriceChanges[subject];
   }
 
   // set periodLastOccuredAt
@@ -84,7 +82,7 @@ abstract contract HarnessSetup is Test {
   function _buy(address trader, address subject) internal {
     Proof[] memory proof = _getProofForSubjects(trader, subject);
     vm.prank(trader);
-    h.buyKeys{value: 5 ether}(1, proof);
+    harness.buyKeys{value: 5 ether}(subject, 1, proof);
   }
 
   function _getProofForSubjects(
@@ -113,15 +111,13 @@ abstract contract HarnessSetup is Test {
 
     // If h was not in ci, get its getPriceProof and assign it to the last position in proof
     if (!isHInCi) {
-      proof[ci.length] = h.getPriceProof(subject, trader);
+      proof[ci.length] = harness.getPriceProof(subject, trader);
     }
 
     return proof;
   }
 
   function setUp() public {
-    subPool = new SubscriptionPool();
-
     vm.deal(owner, 100 ether);
     vm.deal(addr1, 100 ether);
     vm.deal(addr2, 100 ether);

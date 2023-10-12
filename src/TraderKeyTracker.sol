@@ -41,4 +41,15 @@ abstract contract TraderKeyTracker {
       _groupedTraderKeyContractBalances[trader].set(keySubject, newBal);
     }
   }
+
+  function getNumUniqueSubjects(address trader) public view returns (uint256) {
+    return _groupedTraderKeyContractBalances[trader].length();
+  }
+
+  function getUniqueTraderSubjectAtIndex(
+    address trader,
+    uint256 index
+  ) public view returns (address, uint256) {
+    return _groupedTraderKeyContractBalances[trader].at(index);
+  }
 }

@@ -30,15 +30,15 @@ contract SubscriptionKeys is TraderKeyTracker, SubscriptionPool {
 
   // TODO make subscriptinoRate changes work
   mapping(address keySubject => Common.PriceChange[])
-    private historicalPriceChanges;
+    internal historicalPriceChanges;
   mapping(address keySubject => bytes32[]) private historicalPriceHashes;
   mapping(address keySubject => Common.PriceChange[])
-    private recentPriceChanges;
+    internal recentPriceChanges;
   mapping(address keySubject => mapping(address => uint256))
-    private _lastHistoricalPriceByTrader;
+    internal _lastHistoricalPriceByTrader;
   mapping(address keySubject => mapping(address => uint256))
-    private _lastTraderInteractionTime;
-  mapping(address keySubject => uint256) private periodLastOccuredAt;
+    internal _lastTraderInteractionTime;
+  mapping(address keySubject => uint256) internal periodLastOccuredAt;
 
   // This mapping is used to check if a keySubject is already initialized
   mapping(address keySubject => bool) private initializedKeySubjects;
@@ -313,7 +313,7 @@ contract SubscriptionKeys is TraderKeyTracker, SubscriptionPool {
           proofs[j],
           subjectInfo.balance
         );
-        require(verifyHash(h, trader), "Invalid proof");
+        require(verifyHash(h, subjectInfo.keySubject, trader), "Invalid proof");
 
         return fee;
       }
@@ -389,7 +389,9 @@ contract SubscriptionKeys is TraderKeyTracker, SubscriptionPool {
 
     // get hash right before the traders price change. The prover will hash chain off of this
     return
-      historicalPriceHashes[keySubject][getLastTraderPriceIndex(trader) - 1];
+      historicalPriceHashes[keySubject][
+        getLastTraderPriceIndex(keySubject, trader) - 1
+      ];
   }
 
   function getLastTraderPriceIndex(
@@ -484,12 +486,11 @@ contract SubscriptionKeys is TraderKeyTracker, SubscriptionPool {
     address buySubject
   ) internal view returns (uint256) {
     uint256 totalRequirement = 0;
-    uint256 length = _groupedTraderKeyContractBalances[trader].length();
-
-    for (uint256 i = 0; i < length; i++) {
-      (address keySubject, uint256 balance) = _groupedTraderKeyContractBalances[
-        trader
-      ].at(i);
+    for (uint256 i = 0; i < getNumUniqueSubjects(trader); i++) {
+      (address keySubject, uint256 balance) = getUniqueTraderSubjectAtIndex(
+        trader,
+        i
+      );
       if (keySubject == buySubject) {
         continue;
       }
