@@ -30,7 +30,7 @@ abstract contract TraderKeyTracker {
     return contractInfos;
   }
 
-  function _updateBalances(
+  function _updateOwnedSubjectSet(
     uint256 newBal,
     address trader,
     address keySubject

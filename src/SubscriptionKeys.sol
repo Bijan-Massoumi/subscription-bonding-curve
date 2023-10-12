@@ -23,7 +23,7 @@ contract SubscriptionKeys is TraderKeyTracker, SubscriptionPool {
     uint256 supply
   );
 
-  // Mapping owner address to token count
+  // TODO replace _balances with EnumerableMap implementation
   mapping(address trader => mapping(address keySubject => uint256))
     private _balances;
   mapping(address keySubject => uint256) public keySupply;
@@ -130,18 +130,17 @@ contract SubscriptionKeys is TraderKeyTracker, SubscriptionPool {
     uint256 price = getPrice(keySupply[keySubject], amount);
     require(msg.value >= price, "Inusfficient nft price");
     address trader = msg.sender;
-    // fetch last subscription deposit checkpoint
-    uint256 deposit = getSubscriptionPool(trader);
-    // collect fees
-    Common.SubjectTraderInfo[] memory subInfo = getTraderSubjectInfo(trader);
 
-    uint256 fees = _verifyAndCollectFees(subInfo, keySubject, trader, proofs);
+    // collect fees
+    Common.SubjectTraderInfo[] memory subInfos = getTraderSubjectInfo(trader);
+    uint256 fees = _verifyAndCollectFees(subInfos, keySubject, trader, proofs);
 
     // confirm that the trader has enough in the deposit for subscription
     uint256 req = getPoolRequirementForBuy(trader, address(this), amount);
     uint256 additionalDeposit = msg.value - price;
-    require(additionalDeposit + deposit > fees, "Insufficient pool");
-    uint256 newDeposit = additionalDeposit + deposit - fees;
+    uint256 existingDeposit = getSubscriptionPool(trader);
+    require(additionalDeposit + existingDeposit > fees, "Insufficient pool");
+    uint256 newDeposit = additionalDeposit + existingDeposit - fees;
     require(req <= newDeposit, "Insufficient pool");
 
     // adjust supply
@@ -150,7 +149,7 @@ contract SubscriptionKeys is TraderKeyTracker, SubscriptionPool {
     _balances[trader][keySubject] = newBal;
 
     // update checkpoints
-    _updateBalances(newBal, trader, keySubject);
+    _updateOwnedSubjectSet(newBal, trader, keySubject);
     _updateTraderPool(trader, newDeposit);
     _updatePriceOracle(keySubject, price);
     _lastTraderInteractionTime[keySubject][trader] = block.timestamp;
@@ -185,13 +184,13 @@ contract SubscriptionKeys is TraderKeyTracker, SubscriptionPool {
     // update checkpoints
     uint256 newBal = currBalance - amount;
     uint256 newDeposit = subPool - fees;
+    _balances[msg.sender][keySubject] = newBal;
+    supply = supply - amount;
 
-    _updateBalances(newBal, trader, keySubject);
+    _updateOwnedSubjectSet(newBal, trader, keySubject);
     _updateTraderPool(trader, newDeposit);
     _updatePriceOracle(keySubject, price);
     _lastTraderInteractionTime[keySubject][trader] = block.timestamp;
-    _balances[msg.sender][keySubject] = newBal;
-    supply = supply - amount;
 
     (bool success1, ) = msg.sender.call{value: price}("");
     (bool success2, ) = keySubject.call{value: fees}("");
@@ -263,21 +262,17 @@ contract SubscriptionKeys is TraderKeyTracker, SubscriptionPool {
   }
 
   function _verifyAndCollectFees(
-    Common.SubjectTraderInfo[] memory subInfo,
+    Common.SubjectTraderInfo[] memory subInfos,
     address buySubject,
     address trader,
     Proof[] calldata proofs
   ) internal returns (uint256 _fees) {
-    uint256 fees = 0;
-    for (uint256 i = 0; i < subInfo.length; i++) {
-      if (subInfo[i].keySubject == buySubject) {
-        continue;
-      }
-
-      Common.SubjectTraderInfo memory info = subInfo[i];
-      uint256 feeForSubject = _calculateFeeForSubject(info, trader, proofs);
-      fees += feeForSubject;
-    }
+    uint256 fees = collectForOwnedSubjects(
+      buySubject,
+      trader,
+      subInfos,
+      proofs
+    );
 
     bool found;
     for (uint256 i = 0; i < proofs.length; i++) {
@@ -295,6 +290,26 @@ contract SubscriptionKeys is TraderKeyTracker, SubscriptionPool {
     return fees;
   }
 
+  function collectForOwnedSubjects(
+    address subject,
+    address trader,
+    Common.SubjectTraderInfo[] memory subInfos,
+    Proof[] calldata proofs
+  ) internal returns (uint256 _fees) {
+    uint256 fees = 0;
+    for (uint256 i = 0; i < subInfos.length; i++) {
+      if (subInfos[i].keySubject == subject) {
+        continue;
+      }
+
+      Common.SubjectTraderInfo memory info = subInfos[i];
+      uint256 feeForSubject = _calculateFeeForSubject(info, trader, proofs);
+      fees += feeForSubject;
+    }
+
+    return fees;
+  }
+
   function _calculateFeeForSubject(
     Common.SubjectTraderInfo memory subjectInfo,
     address trader,
@@ -304,11 +319,11 @@ contract SubscriptionKeys is TraderKeyTracker, SubscriptionPool {
 
     for (uint256 j = 0; j < proofs.length; j++) {
       if (proofs[j].keySubject == subjectInfo.keySubject) {
-        uint256 lastDepositTime = _lastTraderInteractionTime[
+        uint256 lastInteractionTime = _lastTraderInteractionTime[
           subjectInfo.keySubject
         ][trader];
         (uint256 fee, bytes32 h) = getFeeWithFinalHash(
-          lastDepositTime,
+          lastInteractionTime,
           initialHash,
           proofs[j],
           subjectInfo.balance
@@ -325,7 +340,7 @@ contract SubscriptionKeys is TraderKeyTracker, SubscriptionPool {
   // ------------ fee calculation methods ----------------
 
   function getFeeWithFinalHash(
-    uint256 lastCheckpointAt,
+    uint256 lastInteractionTime,
     bytes32 initialHash,
     Proof calldata proof,
     uint256 balance
@@ -342,14 +357,14 @@ contract SubscriptionKeys is TraderKeyTracker, SubscriptionPool {
       uint256 nextTimestamp = i < endIndex
         ? pastPrices[i + 1].startTimestamp
         : block.timestamp;
-      if (lastCheckpointAt > nextTimestamp) {
+      if (lastInteractionTime > nextTimestamp) {
         continue;
       }
 
       uint256 lastTimestamp = pastPrices[i].startTimestamp;
-      uint256 startInterestAt = lastCheckpointAt > lastTimestamp &&
-        lastCheckpointAt <= nextTimestamp
-        ? lastCheckpointAt
+      uint256 startInterestAt = lastInteractionTime > lastTimestamp &&
+        lastInteractionTime <= nextTimestamp
+        ? lastInteractionTime
         : lastTimestamp;
 
       totalFee += ComputeUtils._calculateFeeBetweenTimes(
@@ -424,39 +439,53 @@ contract SubscriptionKeys is TraderKeyTracker, SubscriptionPool {
   }
 
   // -------------- Pool Requirement methods ----------------
-  // -------------- subscription pool methods ----------------
 
   // TODO these need to extract fees
-  function increaseSubscriptionPool(address trader) external payable {
-    // uint256 subPool = getSubscriptionPool(trader);
-    // uint256 newDeposit = subPool + msg.value;
-    // _updateTraderPool(msg.sender, newDeposit);
+  function increaseSubscriptionPool(Proof[] calldata proofs) external payable {
+    address trader = msg.sender;
+
+    Common.SubjectTraderInfo[] memory subInfos = getTraderSubjectInfo(trader);
+    uint256 fees = collectForOwnedSubjects(
+      address(0),
+      trader,
+      subInfos,
+      proofs
+    );
+    uint256 existingDeposit = getSubscriptionPool(trader);
+    uint256 newDeposit = existingDeposit + msg.value - fees;
+
+    uint256 req = _getUnchangingPoolRequirement(trader, address(0));
+    require(req <= newDeposit, "Insufficient pool");
+
+    _updateTraderPool(trader, newDeposit);
   }
 
   // TODO
-  function decreaseSubscriptionPool(uint256 amount) external {
-    //   uint256 subPool = getSubscriptionPool(msg.sender, groupId);
-    //   uint256 req = getCurrentPoolRequirement(msg.sender, groupId);
-    //   require(subPool >= amount, "Insufficient deposit");
-    //   require(
-    //     subPool - amount >= req,
-    //     "Deposit cannot be less than current requirement"
-    //   );
-    //   uint256 newDeposit = subPool - amount;
-    //   _updateTraderPool(msg.sender, 0, newDeposit);
-    //   // Transfer the amount to the trader
-    //   (bool success, ) = msg.sender.call{value: amount}("");
-    //   require(success, "Transfer failed");
-    // }
-    // function getCurrentPoolRequirement(
-    //   address trader
-    // ) public view returns (uint256) {
-    //   // Initialize the total pool requirement to 0
-    //   uint256 totalPoolRequirement = _getUnchangingPoolRequirement(
-    //     trader,
-    //     address(0)
-    //   );
-    //   return totalPoolRequirement;
+  function decreaseSubscriptionPool(
+    uint256 amount,
+    Proof[] calldata proofs
+  ) external {
+    address trader = msg.sender;
+    // collect fees
+    Common.SubjectTraderInfo[] memory subInfos = getTraderSubjectInfo(trader);
+    uint256 fees = collectForOwnedSubjects(
+      address(0),
+      trader,
+      subInfos,
+      proofs
+    );
+
+    uint256 existingDeposit = getSubscriptionPool(trader);
+    uint256 newDeposit = existingDeposit - fees - amount;
+
+    uint256 req = _getUnchangingPoolRequirement(trader, address(0));
+
+    require(req <= newDeposit, "Insufficient pool");
+
+    _updateTraderPool(trader, newDeposit);
+
+    (bool success, ) = msg.sender.call{value: amount}("");
+    require(success, "Unable to send funds");
   }
 
   function getPoolRequirementForBuy(
@@ -503,4 +532,6 @@ contract SubscriptionKeys is TraderKeyTracker, SubscriptionPool {
 
     return totalRequirement;
   }
+
+  // TODO liquidation
 }
