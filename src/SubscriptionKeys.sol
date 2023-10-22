@@ -162,10 +162,6 @@ contract SubscriptionKeys is
     _updateOwnedSubjectSet(newBal, trader, keySubject);
     _updateTraderPool(trader, newDeposit);
     _updatePriceOracle(keySubject, price);
-
-    // send fees to keySubject
-    (bool success, ) = keySubject.call{value: fees}("");
-    require(success, "Unable to send funds");
   }
 
   function sellKeys(
@@ -201,8 +197,7 @@ contract SubscriptionKeys is
     _updatePriceOracle(keySubject, price);
 
     (bool success1, ) = msg.sender.call{value: price}("");
-    (bool success2, ) = keySubject.call{value: fees}("");
-    require(success1 && success2, "Unable to send funds");
+    require(success1, "Unable to send funds");
   }
 
   function _updatePriceOracle(address keySubject, uint256 newPrice) internal {
@@ -274,8 +269,8 @@ contract SubscriptionKeys is
     address buySubject,
     address trader,
     Proof[] calldata proofs
-  ) internal returns (uint256 _fees) {
-    uint256 fees = collectForOwnedSubjects(
+  ) internal returns (uint256 _feesCollected) {
+    uint256 feesCollected = collectFeesForOwnedSubjects(
       buySubject,
       trader,
       subInfos,
@@ -290,21 +285,25 @@ contract SubscriptionKeys is
           keySubject: proofs[i].keySubject,
           balance: balanceOf(buySubject, trader)
         });
-        fees += _calculateFeeForSubject(info, trader, proofs);
+        uint256 subjectFee = _calculateFeeForSubject(info, trader, proofs);
+        (bool success, ) = info.keySubject.call{value: subjectFee}("");
+        require(success, "Unable to send funds");
+
+        feesCollected += subjectFee;
       }
     }
     if (!found) revert SubjectProofMissing({subject: buySubject});
 
-    return fees;
+    return feesCollected;
   }
 
-  function collectForOwnedSubjects(
+  function collectFeesForOwnedSubjects(
     address subject,
     address trader,
     Common.SubjectTraderInfo[] memory subInfos,
     Proof[] calldata proofs
-  ) internal returns (uint256 _fees) {
-    uint256 fees = 0;
+  ) internal returns (uint256 _feesCollected) {
+    uint256 feesCollected = 0;
     for (uint256 i = 0; i < subInfos.length; i++) {
       if (subInfos[i].keySubject == subject) {
         continue;
@@ -312,10 +311,13 @@ contract SubscriptionKeys is
 
       Common.SubjectTraderInfo memory info = subInfos[i];
       uint256 feeForSubject = _calculateFeeForSubject(info, trader, proofs);
-      fees += feeForSubject;
+      (bool success, ) = info.keySubject.call{value: feeForSubject}("");
+      require(success, "Unable to send funds");
+
+      feesCollected += feeForSubject;
     }
 
-    return fees;
+    return feesCollected;
   }
 
   function _calculateFeeForSubject(
@@ -456,7 +458,7 @@ contract SubscriptionKeys is
     address trader = msg.sender;
 
     Common.SubjectTraderInfo[] memory subInfos = getTraderSubjectInfo(trader);
-    uint256 fees = collectForOwnedSubjects(
+    uint256 fees = collectFeesForOwnedSubjects(
       address(0),
       trader,
       subInfos,
@@ -471,7 +473,6 @@ contract SubscriptionKeys is
     _updateTraderPool(trader, newDeposit);
   }
 
-  // TODO
   function decreaseSubscriptionPool(
     uint256 amount,
     Proof[] calldata proofs
@@ -479,7 +480,7 @@ contract SubscriptionKeys is
     address trader = msg.sender;
     // collect fees
     Common.SubjectTraderInfo[] memory subInfos = getTraderSubjectInfo(trader);
-    uint256 fees = collectForOwnedSubjects(
+    uint256 fees = collectFeesForOwnedSubjects(
       address(0),
       trader,
       subInfos,
