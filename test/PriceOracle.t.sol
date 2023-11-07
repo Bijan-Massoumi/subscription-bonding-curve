@@ -120,7 +120,7 @@ contract PriceOracleTest is HarnessSetup {
     assertEq(rt.lastPrice, price4, "lastPrice should match");
     assertEq(
       rt.lastUpdateTime,
-      startTime + 11 hours,
+      startTime + period + 1,
       "lastUpdateTime should match"
     );
   }
