@@ -6,8 +6,6 @@ import "forge-std/console.sol";
 import "./Common.sol";
 import "@openzeppelin/contracts/utils/structs/EnumerableMap.sol";
 
-// TODO can a contract be a part of two different groups?
-
 abstract contract SubscriptionPool is ISubscriptionPoolErrors {
   // event FeeCollected(
   //   uint256 feeCollected,

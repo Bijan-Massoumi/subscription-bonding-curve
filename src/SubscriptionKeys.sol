@@ -18,6 +18,13 @@ struct TraderInfoForSubject {
   uint128 lastInteractionTime;
 }
 
+struct RunningTotal {
+  uint256 weightedSum; // Sum of products: price * time
+  uint256 totalDuration; // Total duration that contributed to the sum
+  uint256 lastUpdateTime; // Last time the price was updated
+  uint256 lastPrice; // The last price that was set
+}
+
 // TODO add method that liquidates all users, it should give a gas refund, it should revert if there are no users to liquidate
 contract SubscriptionKeys is
   TraderKeyTracker,
@@ -42,8 +49,8 @@ contract SubscriptionKeys is
   mapping(address keySubject => Common.PriceChange[])
     internal historicalPriceChanges;
   mapping(address keySubject => bytes32[]) private historicalPriceHashes;
-  mapping(address keySubject => Common.PriceChange[])
-    internal recentPriceChanges;
+
+  mapping(address keySubject => RunningTotal) internal runningTotals;
 
   mapping(address keySubject => mapping(address trader => TraderInfoForSubject))
     internal traderInfos;
@@ -68,6 +75,13 @@ contract SubscriptionKeys is
 
     initializedKeySubjects[_keySubject] = true;
 
+    runningTotals[_keySubject] = RunningTotal({
+      weightedSum: 0,
+      totalDuration: 0,
+      lastUpdateTime: block.timestamp,
+      lastPrice: 0
+    });
+
     // first period has no interest rate on buys
     Common.PriceChange memory newPriceChange = Common.PriceChange({
       price: 0,
@@ -75,7 +89,6 @@ contract SubscriptionKeys is
       startTimestamp: uint112(block.timestamp),
       index: 0
     });
-
     // initialize genesis price change
     historicalPriceChanges[_keySubject].push(newPriceChange);
     bytes32 h = keccak256(abi.encode(newPriceChange, bytes32(0)));
@@ -202,41 +215,35 @@ contract SubscriptionKeys is
 
   function _updatePriceOracle(address keySubject, uint256 newPrice) internal {
     uint256 currentTime = block.timestamp;
+    RunningTotal storage total = runningTotals[keySubject];
 
     // Check if a full period has elapsed
     if (currentTime - periodLastOccuredAt[keySubject] >= period) {
-      // If there's at least one price change in the recent changes
+      // Calculate the time-weighted average price for the period
       uint256 averagePrice;
-      if (recentPriceChanges[keySubject].length > 0) {
-        // Calculate the time-weighted average
-        averagePrice = ComputeUtils.calculateTimeWeightedAveragePrice(
-          recentPriceChanges[keySubject],
-          currentTime
-        );
+      if (total.totalDuration > 0) {
+        averagePrice = total.weightedSum / total.totalDuration;
       } else {
-        uint256 len = historicalPriceChanges[keySubject].length - 1;
-        averagePrice = historicalPriceChanges[keySubject][len].price;
+        // No price change occurred during this period; use the last known price
+        averagePrice = total.lastPrice;
       }
 
       _addHistoricalPriceChange(keySubject, averagePrice, currentTime);
 
-      // Reset the recentPriceChanges and update the period's last occurrence time
-      delete recentPriceChanges[keySubject];
+      // Reset the weighted sum and duration for the new period
+      total.weightedSum = 0;
+      total.totalDuration = 0;
+      total.lastUpdateTime = currentTime;
       periodLastOccuredAt[keySubject] = currentTime;
     }
 
-    // TODO check if last elem has the same timestamp and combine if so
-    // add the new price to recentPriceChanges
-    Common.PriceChange memory newRecentPriceChange = Common.PriceChange({
-      price: newPrice,
-      rate: historicalPriceChanges[keySubject][
-        historicalPriceChanges[keySubject].length - 1
-      ].rate,
-      startTimestamp: uint112(currentTime),
-      index: uint16(recentPriceChanges[keySubject].length)
-    });
-
-    recentPriceChanges[keySubject].push(newRecentPriceChange);
+    uint256 timeElapsed = currentTime - total.lastUpdateTime;
+    if (timeElapsed > 0) {
+      total.weightedSum += (total.lastPrice * timeElapsed) * SCALE;
+      total.totalDuration += timeElapsed * SCALE;
+      total.lastUpdateTime = currentTime;
+    }
+    total.lastPrice = newPrice;
   }
 
   function _addHistoricalPriceChange(

@@ -32,11 +32,10 @@ contract KeyHarness is SubscriptionKeys {
     _addHistoricalPriceChange(keySubject, averagePrice, currentTime);
   }
 
-  // get recentPriceChanges
-  function exposedGetRecentPriceChanges(
+  function exposedGetRunningTotal(
     address keySubject
-  ) external view returns (Common.PriceChange[] memory) {
-    return recentPriceChanges[keySubject];
+  ) external view returns (RunningTotal memory) {
+    return runningTotals[keySubject];
   }
 
   // get period
