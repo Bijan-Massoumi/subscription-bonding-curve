@@ -5,6 +5,7 @@ import {SubscriptionPool} from "./SubscriptionPool.sol";
 import {ISubscriptionKeysErrors} from "./errors/ISubscriptionKeysErrors.sol";
 import "./ComputeUtils.sol";
 import "./Common.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
 import {TraderKeyTracker} from "./TraderKeyTracker.sol";
 import "forge-std/console.sol";
 
@@ -13,7 +14,12 @@ struct Proof {
   Common.PriceChange[] pcs;
 }
 
-struct TraderInfoForSubject {
+struct FeeBreakdown {
+  uint256 fees;
+  address keySubject;
+}
+
+struct PriceInteractionRecord {
   uint128 lastHistoricalPriceIdx;
   uint128 lastInteractionTime;
 }
@@ -29,7 +35,8 @@ struct RunningTotal {
 contract SubscriptionKeys is
   TraderKeyTracker,
   SubscriptionPool,
-  ISubscriptionKeysErrors
+  ISubscriptionKeysErrors,
+  Ownable
 {
   event Trade(
     address trader,
@@ -44,26 +51,35 @@ contract SubscriptionKeys is
   mapping(address trader => mapping(address keySubject => uint256))
     private _balances;
   mapping(address keySubject => uint256) public keySupply;
+  mapping(address keySubject => bool) private initializedKeySubjects;
 
   // TODO make subscriptinoRate changes work
   mapping(address keySubject => Common.PriceChange[])
     internal historicalPriceChanges;
   mapping(address keySubject => bytes32[]) private historicalPriceHashes;
-
   mapping(address keySubject => RunningTotal) internal runningTotals;
-
-  mapping(address keySubject => mapping(address trader => TraderInfoForSubject))
-    internal traderInfos;
-
   mapping(address keySubject => uint256) internal periodLastOccuredAt;
 
-  // This mapping is used to check if a keySubject is already initialized
-  mapping(address keySubject => bool) private initializedKeySubjects;
+  mapping(address keySubject => mapping(address trader => PriceInteractionRecord))
+    internal traderInfos;
+
+  uint256 protocolFeePercent;
+  address protocolFeeDestination;
 
   uint256 period = 43_200;
 
   // 100% fee rate
   uint256 internal maxSubscriptionRate = 10000;
+
+  constructor() Ownable(msg.sender) {}
+
+  function setProtocolFeePercent(uint256 _feePercent) public onlyOwner {
+    protocolFeePercent = _feePercent;
+  }
+
+  function setProtocolFeeDestination(address _feeDestination) public onlyOwner {
+    protocolFeeDestination = _feeDestination;
+  }
 
   // TODO add signature
   function initializeKeySubject(uint256 _subscriptionRate) public {
@@ -128,6 +144,24 @@ contract SubscriptionKeys is
     return getPrice(keySupply[keySubject] - amount, amount);
   }
 
+  function getBuyPriceAfterFee(
+    address sharesSubject,
+    uint256 amount
+  ) public view returns (uint256) {
+    uint256 price = getBuyPrice(sharesSubject, amount);
+    uint256 protocolFee = (price * protocolFeePercent) / 1 ether;
+    return price + protocolFee;
+  }
+
+  function getSellPriceAfterFee(
+    address sharesSubject,
+    uint256 amount
+  ) public view returns (uint256) {
+    uint256 price = getSellPrice(sharesSubject, amount);
+    uint256 protocolFee = (price * protocolFeePercent) / 1 ether;
+    return price - protocolFee;
+  }
+
   function getSupply(address keySubject) public view returns (uint256) {
     return keySupply[keySubject];
   }
@@ -151,19 +185,29 @@ contract SubscriptionKeys is
   ) public payable {
     require(amount > 0, "Cannot buy 0 keys");
     uint256 price = getPrice(keySupply[keySubject], amount);
-    require(msg.value >= price, "Inusfficient nft price");
+    uint256 protocolFee = (price * protocolFeePercent) / 1 ether;
+    require(msg.value >= price + protocolFee, "Inusfficient payment");
     address trader = msg.sender;
 
-    // collect fees
-    Common.SubjectTraderInfo[] memory subInfos = getTraderSubjectInfo(trader);
-    uint256 fees = _verifyAndCollectFees(subInfos, keySubject, trader, proofs);
-
-    // confirm that the trader has enough in the deposit for subscription
-    uint256 req = getPoolRequirementForBuy(trader, address(this), amount);
-    uint256 additionalDeposit = msg.value - price;
-    uint256 existingDeposit = getSubscriptionPool(trader);
-    require(additionalDeposit + existingDeposit > fees, "Insufficient pool");
-    uint256 newDeposit = additionalDeposit + existingDeposit - fees;
+    // handle outstanding fees
+    uint256 lastSubPool = getSubscriptionPool(trader);
+    Common.SubjectTraderInfo[] memory subInfo = getTraderSubjectInfo(trader);
+    (FeeBreakdown[] memory breakdown, uint256 totalFees) = _getFeeBreakdown(
+      subInfo,
+      trader,
+      proofs
+    );
+    uint256 newDeposit = _distributeFees(
+      breakdown,
+      lastSubPool,
+      totalFees,
+      trader
+    );
+    newDeposit -= (msg.value - price - protocolFee);
+    // if we didnt already verify a proof for this subject, we need to update the trader info
+    bool exists = traderOwnsKeySubject(trader, keySubject);
+    if (!exists) _updatePriceInteractionRecord(keySubject, trader);
+    uint256 req = getPoolRequirementForBuy(trader, keySubject, amount);
     require(req <= newDeposit, "Insufficient pool");
 
     // adjust supply
@@ -175,6 +219,9 @@ contract SubscriptionKeys is
     _updateOwnedSubjectSet(newBal, trader, keySubject);
     _updateTraderPool(trader, newDeposit);
     _updatePriceOracle(keySubject, price);
+
+    (bool success, ) = protocolFeeDestination.call{value: protocolFee}("");
+    if (!success) revert ProtocolFeeTransferFailed();
   }
 
   function sellKeys(
@@ -188,29 +235,74 @@ contract SubscriptionKeys is
     require(amount > 0, "Cannot sell 0 keys");
 
     uint256 price = getPrice(supply - amount, amount);
+    uint256 protocolFee = (price * protocolFeePercent) / 1 ether;
     address trader = msg.sender;
     uint256 currBalance = _balances[trader][keySubject];
     require(currBalance >= amount, "Insufficient keys");
 
-    // fetch last subscription deposit checkpoint
-    uint256 subPool = getSubscriptionPool(trader);
-
-    // collect fees
+    // handle outstanding fees
+    uint256 lastSubPool = getSubscriptionPool(trader);
     Common.SubjectTraderInfo[] memory subInfo = getTraderSubjectInfo(trader);
-    uint256 fees = _verifyAndCollectFees(subInfo, keySubject, trader, proofs);
+    (FeeBreakdown[] memory breakdown, uint256 totalFees) = _getFeeBreakdown(
+      subInfo,
+      trader,
+      proofs
+    );
+    uint256 newDeposit = _distributeFees(
+      breakdown,
+      lastSubPool,
+      totalFees,
+      trader
+    );
+    _updateTraderPool(trader, newDeposit);
+    // if we didnt already verify a proof for this subject, we need to update the trader info
+    bool exists = traderOwnsKeySubject(trader, keySubject);
+    if (!exists) _updatePriceInteractionRecord(keySubject, trader);
 
     // update checkpoints
     uint256 newBal = currBalance - amount;
-    uint256 newDeposit = subPool - fees;
     _balances[msg.sender][keySubject] = newBal;
     supply = supply - amount;
-
     _updateOwnedSubjectSet(newBal, trader, keySubject);
-    _updateTraderPool(trader, newDeposit);
     _updatePriceOracle(keySubject, price);
 
-    (bool success1, ) = msg.sender.call{value: price}("");
-    require(success1, "Unable to send funds");
+    (bool success1, ) = msg.sender.call{value: price - protocolFee}("");
+    (bool success2, ) = protocolFeeDestination.call{value: protocolFee}("");
+    require(success1 && success2, "Unable to send funds");
+  }
+
+  function _distributeFees(
+    FeeBreakdown[] memory breakdown,
+    uint256 lastSubPool,
+    uint256 totalFees,
+    address trader
+  ) internal returns (uint256) {
+    if (totalFees <= lastSubPool) {
+      for (uint256 i = 0; i < breakdown.length; i++) {
+        address keySub = breakdown[i].keySubject;
+        (bool sent, ) = keySub.call{value: breakdown[i].fees}("");
+        require(sent, "Fee transfer failed");
+        lastSubPool -= breakdown[i].fees;
+
+        // Update the trader information with the new historical price index and interaction time
+        _updatePriceInteractionRecord(keySub, trader);
+      }
+    } else {
+      uint256 totalScaledFees = totalFees * 1 ether;
+      for (uint256 i = 0; i < breakdown.length; i++) {
+        uint256 feeProportion = (breakdown[i].fees * lastSubPool * 1 ether) /
+          totalScaledFees;
+        address keySub = breakdown[i].keySubject;
+        (bool sent, ) = keySub.call{value: feeProportion}("");
+        require(sent, "Pro-rata fee transfer failed");
+
+        // Update the trader information with the new historical price index and interaction time
+        _updatePriceInteractionRecord(keySub, trader);
+      }
+      lastSubPool = 0;
+    }
+
+    return lastSubPool;
   }
 
   function _updatePriceOracle(address keySubject, uint256 newPrice) internal {
@@ -271,91 +363,58 @@ contract SubscriptionKeys is
     historicalPriceHashes[keySubject].push(newHash);
   }
 
-  function _verifyAndCollectFees(
+  function _getFeeBreakdown(
     Common.SubjectTraderInfo[] memory subInfos,
-    address buySubject,
     address trader,
     Proof[] calldata proofs
-  ) internal returns (uint256 _feesCollected) {
-    uint256 feesCollected = collectFeesForOwnedSubjects(
-      buySubject,
-      trader,
-      subInfos,
-      proofs
+  ) internal returns (FeeBreakdown[] memory _breakdown, uint256 _totalFees) {
+    require(
+      proofs.length == subInfos.length,
+      "Proofs and subInfos length mismatch"
     );
 
-    bool found;
+    FeeBreakdown[] memory breakdown = new FeeBreakdown[](subInfos.length);
+    uint256 totalFees = 0;
     for (uint256 i = 0; i < proofs.length; i++) {
-      if (proofs[i].keySubject == buySubject) {
-        found = true;
-        Common.SubjectTraderInfo memory info = Common.SubjectTraderInfo({
-          keySubject: proofs[i].keySubject,
-          balance: balanceOf(buySubject, trader)
-        });
-        uint256 subjectFee = _calculateFeeForSubject(info, trader, proofs);
-        (bool success, ) = info.keySubject.call{value: subjectFee}("");
-        require(success, "Unable to send funds");
+      if (proofs[i].keySubject != subInfos[i].keySubject)
+        revert InvalidProofsOrder();
 
-        feesCollected += subjectFee;
-      }
-    }
-    if (!found) revert SubjectProofMissing({subject: buySubject});
-
-    return feesCollected;
-  }
-
-  function collectFeesForOwnedSubjects(
-    address subject,
-    address trader,
-    Common.SubjectTraderInfo[] memory subInfos,
-    Proof[] calldata proofs
-  ) internal returns (uint256 _feesCollected) {
-    uint256 feesCollected = 0;
-    for (uint256 i = 0; i < subInfos.length; i++) {
-      if (subInfos[i].keySubject == subject) {
-        continue;
-      }
-
-      Common.SubjectTraderInfo memory info = subInfos[i];
-      uint256 feeForSubject = _calculateFeeForSubject(info, trader, proofs);
-      (bool success, ) = info.keySubject.call{value: feeForSubject}("");
-      require(success, "Unable to send funds");
-
-      feesCollected += feeForSubject;
+      uint256 feeForSubject = _calculateFeeForSubject(
+        subInfos[i],
+        trader,
+        proofs[i]
+      );
+      totalFees += feeForSubject;
+      breakdown[i] = FeeBreakdown({
+        fees: feeForSubject,
+        keySubject: subInfos[i].keySubject
+      });
     }
 
-    return feesCollected;
+    return (breakdown, totalFees);
   }
 
   function _calculateFeeForSubject(
     Common.SubjectTraderInfo memory subjectInfo,
     address trader,
-    Proof[] calldata proofs
+    Proof calldata proof
   ) internal returns (uint256 _fee) {
     bytes32 initialHash = getStartHash(subjectInfo.keySubject, trader);
 
-    for (uint256 j = 0; j < proofs.length; j++) {
-      if (proofs[j].keySubject == subjectInfo.keySubject) {
-        TraderInfoForSubject memory info = traderInfos[subjectInfo.keySubject][
-          trader
-        ];
-        uint256 lastInteractionTime = uint256(info.lastInteractionTime);
-        (uint256 fee, bytes32 h) = getFeeWithFinalHash(
-          lastInteractionTime,
-          initialHash,
-          proofs[j],
-          subjectInfo.balance
-        );
-        verifyHash(h, subjectInfo.keySubject, trader);
+    PriceInteractionRecord memory info = traderInfos[subjectInfo.keySubject][
+      trader
+    ];
+    uint256 lastInteractionTime = uint256(info.lastInteractionTime);
+    (uint256 fee, bytes32 h) = getFeeWithFinalHash(
+      lastInteractionTime,
+      initialHash,
+      proof,
+      subjectInfo.balance
+    );
+    verifyHash(h, subjectInfo.keySubject, trader);
 
-        return fee;
-      }
-    }
-
-    revert SubjectProofMissing({subject: subjectInfo.keySubject});
+    return fee;
   }
-
-  // ------------ fee calculation methods ----------------
 
   function getFeeWithFinalHash(
     uint256 lastInteractionTime,
@@ -404,10 +463,16 @@ contract SubscriptionKeys is
     // Check if the hash is valid
     bool valid = his[his.length - 1] == h;
     if (!valid) revert InvalidProof({subject: keySubject});
+  }
 
-    // Update the trader information with the new historical price index and interaction time
-    TraderInfoForSubject storage info = traderInfos[keySubject][trader];
-    info.lastHistoricalPriceIdx = uint128(his.length - 1);
+  function _updatePriceInteractionRecord(
+    address keySubject,
+    address trader
+  ) internal {
+    PriceInteractionRecord storage info = traderInfos[keySubject][trader];
+    info.lastHistoricalPriceIdx = uint128(
+      historicalPriceHashes[keySubject].length - 1
+    );
     info.lastInteractionTime = uint128(block.timestamp);
   }
 
@@ -433,7 +498,7 @@ contract SubscriptionKeys is
   ) public view returns (uint256) {
     uint256 bal = balanceOf(keySubject, trader);
 
-    TraderInfoForSubject memory info = traderInfos[keySubject][trader];
+    PriceInteractionRecord memory info = traderInfos[keySubject][trader];
     uint256 idx = uint256(info.lastHistoricalPriceIdx);
     if (bal == 0) {
       return historicalPriceChanges[keySubject].length - 1;
@@ -464,16 +529,21 @@ contract SubscriptionKeys is
   function increaseSubscriptionPool(Proof[] calldata proofs) external payable {
     address trader = msg.sender;
 
-    Common.SubjectTraderInfo[] memory subInfos = getTraderSubjectInfo(trader);
-    uint256 fees = collectFeesForOwnedSubjects(
-      address(0),
+    // collect fees
+    uint256 lastSubPool = getSubscriptionPool(trader);
+    Common.SubjectTraderInfo[] memory subInfo = getTraderSubjectInfo(trader);
+    (FeeBreakdown[] memory breakdown, uint256 totalFees) = _getFeeBreakdown(
+      subInfo,
       trader,
-      subInfos,
       proofs
     );
-    uint256 existingDeposit = getSubscriptionPool(trader);
-    uint256 newDeposit = existingDeposit + msg.value - fees;
-
+    uint256 newDeposit = _distributeFees(
+      breakdown,
+      lastSubPool,
+      totalFees,
+      trader
+    );
+    newDeposit = newDeposit + msg.value;
     uint256 req = _getUnchangingPoolRequirement(trader, address(0));
     if (req > newDeposit) revert InsufficientSubscriptionPool();
 
@@ -485,24 +555,26 @@ contract SubscriptionKeys is
     Proof[] calldata proofs
   ) external {
     address trader = msg.sender;
+
     // collect fees
-    Common.SubjectTraderInfo[] memory subInfos = getTraderSubjectInfo(trader);
-    uint256 fees = collectFeesForOwnedSubjects(
-      address(0),
+    uint256 lastSubPool = getSubscriptionPool(trader);
+    Common.SubjectTraderInfo[] memory subInfo = getTraderSubjectInfo(trader);
+    (FeeBreakdown[] memory breakdown, uint256 totalFees) = _getFeeBreakdown(
+      subInfo,
       trader,
-      subInfos,
       proofs
     );
-
-    uint256 existingDeposit = getSubscriptionPool(trader);
-    uint256 newDeposit = existingDeposit - fees - amount;
-
+    uint256 newDeposit = _distributeFees(
+      breakdown,
+      lastSubPool,
+      totalFees,
+      trader
+    );
+    newDeposit = newDeposit - amount;
     uint256 req = _getUnchangingPoolRequirement(trader, address(0));
-
     if (req > newDeposit) revert InsufficientSubscriptionPool();
 
     _updateTraderPool(trader, newDeposit);
-
     (bool success, ) = msg.sender.call{value: amount}("");
     require(success, "Unable to send funds");
   }

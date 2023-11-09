@@ -4,7 +4,7 @@ pragma solidity ^0.8.20;
 import "forge-std/console.sol";
 import "./Common.sol";
 
-uint256 constant SCALE = 1e4;
+uint256 constant SCALE = 1 ether;
 
 library ComputeUtils {
   uint256 constant secondsInYear = 365 days;
@@ -18,5 +18,17 @@ library ComputeUtils {
     feeToReap =
       (feeRate * totalStatedPrice * (endTime - startTime)) /
       (secondsInYear * SCALE);
+  }
+
+  function _getTimeLiquidationBegan(
+    uint256 price,
+    uint256 lastCheckInAt,
+    uint256 feeRate,
+    uint256 subscriptionPoolRemaining
+  ) internal pure returns (uint256 liquidationStartedAt) {
+    liquidationStartedAt =
+      (subscriptionPoolRemaining * (secondsInYear * 10000)) /
+      (feeRate * price) +
+      lastCheckInAt;
   }
 }

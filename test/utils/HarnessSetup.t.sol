@@ -67,6 +67,7 @@ abstract contract HarnessSetup is Test {
   address owner = address(1);
   address addr1 = address(2);
   address addr2 = address(3);
+  address destination = address(4);
   KeyHarness harness;
 
   function _buy(address trader, address subject) internal {
@@ -114,6 +115,9 @@ abstract contract HarnessSetup is Test {
 
     vm.startPrank(owner);
     harness = new KeyHarness();
+    harness.setProtocolFeePercent(50000000000000000);
+    harness.setProtocolFeeDestination(destination);
+
     harness.initializeKeySubject(1000);
     vm.stopPrank();
 

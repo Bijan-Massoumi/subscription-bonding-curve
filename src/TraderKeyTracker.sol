@@ -30,6 +30,14 @@ abstract contract TraderKeyTracker {
     return contractInfos;
   }
 
+  function traderOwnsKeySubject(
+    address trader,
+    address keySubject
+  ) internal view returns (bool) {
+    (bool e, ) = _groupedTraderKeyContractBalances[trader].tryGet(keySubject);
+    return e;
+  }
+
   function _updateOwnedSubjectSet(
     uint256 newBal,
     address trader,
