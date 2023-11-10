@@ -19,16 +19,4 @@ library ComputeUtils {
       (feeRate * totalStatedPrice * (endTime - startTime)) /
       (secondsInYear * SCALE);
   }
-
-  function _getTimeLiquidationBegan(
-    uint256 price,
-    uint256 lastCheckInAt,
-    uint256 feeRate,
-    uint256 subscriptionPoolRemaining
-  ) internal pure returns (uint256 liquidationStartedAt) {
-    liquidationStartedAt =
-      (subscriptionPoolRemaining * (secondsInYear * 10000)) /
-      (feeRate * price) +
-      lastCheckInAt;
-  }
 }

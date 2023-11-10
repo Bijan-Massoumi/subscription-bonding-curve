@@ -57,7 +57,9 @@ contract SubscriptionKeys is
   mapping(address keySubject => Common.PriceChange[])
     internal historicalPriceChanges;
   mapping(address keySubject => bytes32[]) private historicalPriceHashes;
+
   mapping(address keySubject => RunningTotal) internal runningTotals;
+
   mapping(address keySubject => uint256) internal periodLastOccuredAt;
 
   mapping(address keySubject => mapping(address trader => PriceInteractionRecord))
