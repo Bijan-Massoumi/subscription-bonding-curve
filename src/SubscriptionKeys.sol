@@ -189,20 +189,7 @@ contract SubscriptionKeys is
     require(msg.value >= price + protocolFee, "Inusfficient payment");
     address trader = msg.sender;
 
-    // handle outstanding fees
-    uint256 lastSubPool = getSubscriptionPool(trader);
-    Common.SubjectTraderInfo[] memory subInfo = getTraderSubjectInfo(trader);
-    (FeeBreakdown[] memory breakdown, uint256 totalFees) = _getFeeBreakdown(
-      subInfo,
-      trader,
-      proofs
-    );
-    uint256 newDeposit = _distributeFees(
-      breakdown,
-      lastSubPool,
-      totalFees,
-      trader
-    );
+    uint256 newDeposit = collectFees(trader, proofs);
     newDeposit -= (msg.value - price - protocolFee);
     // if we didnt already verify a proof for this subject, we need to update the trader info
     bool exists = traderOwnsKeySubject(trader, keySubject);
@@ -240,20 +227,7 @@ contract SubscriptionKeys is
     uint256 currBalance = _balances[trader][keySubject];
     require(currBalance >= amount, "Insufficient keys");
 
-    // handle outstanding fees
-    uint256 lastSubPool = getSubscriptionPool(trader);
-    Common.SubjectTraderInfo[] memory subInfo = getTraderSubjectInfo(trader);
-    (FeeBreakdown[] memory breakdown, uint256 totalFees) = _getFeeBreakdown(
-      subInfo,
-      trader,
-      proofs
-    );
-    uint256 newDeposit = _distributeFees(
-      breakdown,
-      lastSubPool,
-      totalFees,
-      trader
-    );
+    uint256 newDeposit = collectFees(trader, proofs);
     _updateTraderPool(trader, newDeposit);
     // if we didnt already verify a proof for this subject, we need to update the trader info
     bool exists = traderOwnsKeySubject(trader, keySubject);
@@ -269,6 +243,26 @@ contract SubscriptionKeys is
     (bool success1, ) = msg.sender.call{value: price - protocolFee}("");
     (bool success2, ) = protocolFeeDestination.call{value: protocolFee}("");
     require(success1 && success2, "Unable to send funds");
+  }
+
+  function collectFees(
+    address trader,
+    Proof[] calldata proofs
+  ) internal returns (uint256 _newDeposit) {
+    uint256 lastSubPool = getSubscriptionPool(trader);
+    Common.SubjectTraderInfo[] memory subInfo = getTraderSubjectInfo(trader);
+    (FeeBreakdown[] memory breakdown, uint256 totalFees) = _getFeeBreakdown(
+      subInfo,
+      trader,
+      proofs
+    );
+    uint256 newDeposit = _distributeFees(
+      breakdown,
+      lastSubPool,
+      totalFees,
+      trader
+    );
+    return newDeposit;
   }
 
   function _distributeFees(
@@ -303,6 +297,112 @@ contract SubscriptionKeys is
     }
 
     return lastSubPool;
+  }
+
+  function _getFeeBreakdown(
+    Common.SubjectTraderInfo[] memory subInfos,
+    address trader,
+    Proof[] calldata proofs
+  )
+    internal
+    view
+    returns (FeeBreakdown[] memory _breakdown, uint256 _totalFees)
+  {
+    require(
+      proofs.length == subInfos.length,
+      "Proofs and subInfos length mismatch"
+    );
+
+    FeeBreakdown[] memory breakdown = new FeeBreakdown[](subInfos.length);
+    uint256 totalFees = 0;
+    for (uint256 i = 0; i < proofs.length; i++) {
+      if (proofs[i].keySubject != subInfos[i].keySubject)
+        revert InvalidProofsOrder();
+
+      uint256 feeForSubject = _calculateFeeForSubject(
+        subInfos[i],
+        trader,
+        proofs[i]
+      );
+      totalFees += feeForSubject;
+      breakdown[i] = FeeBreakdown({
+        fees: feeForSubject,
+        keySubject: subInfos[i].keySubject
+      });
+    }
+
+    return (breakdown, totalFees);
+  }
+
+  function _calculateFeeForSubject(
+    Common.SubjectTraderInfo memory subjectInfo,
+    address trader,
+    Proof calldata proof
+  ) internal view returns (uint256 _fee) {
+    bytes32 initialHash = getStartHash(subjectInfo.keySubject, trader);
+
+    PriceInteractionRecord memory info = traderInfos[subjectInfo.keySubject][
+      trader
+    ];
+    uint256 lastInteractionTime = uint256(info.lastInteractionTime);
+    (uint256 fee, bytes32 h) = getFeeWithFinalHash(
+      lastInteractionTime,
+      initialHash,
+      proof,
+      subjectInfo.balance
+    );
+    verifyHash(h, subjectInfo.keySubject);
+
+    return fee;
+  }
+
+  function getFeeWithFinalHash(
+    uint256 lastInteractionTime,
+    bytes32 initialHash,
+    Proof calldata proof,
+    uint256 balance
+  ) internal view returns (uint256 fees, bytes32 h) {
+    Common.PriceChange[] calldata pastPrices = proof.pcs;
+    require(pastPrices.length > 0, "No past prices");
+
+    bytes32 currentHash = initialHash;
+    uint256 endIndex = pastPrices.length - 1;
+    uint256 totalFee = 0;
+    for (uint256 i = 0; i <= endIndex; i++) {
+      // Update the hash chain
+      currentHash = keccak256(abi.encode(pastPrices[i], currentHash));
+      uint256 nextTimestamp = i < endIndex
+        ? pastPrices[i + 1].startTimestamp
+        : block.timestamp;
+
+      // if Proof contains elements before their last iteraction index don't count toward fee
+      if (lastInteractionTime > nextTimestamp) {
+        continue;
+      }
+
+      uint256 lastTimestamp = pastPrices[i].startTimestamp;
+      uint256 startInterestAt = lastInteractionTime > lastTimestamp &&
+        lastInteractionTime <= nextTimestamp
+        ? lastInteractionTime
+        : lastTimestamp;
+
+      totalFee += ComputeUtils._calculateFeeBetweenTimes(
+        balance * pastPrices[i].price,
+        startInterestAt,
+        nextTimestamp,
+        pastPrices[i].rate
+      );
+    }
+
+    return (totalFee, currentHash);
+  }
+
+  function verifyHash(bytes32 h, address keySubject) internal view {
+    bytes32[] storage his = historicalPriceHashes[keySubject];
+
+    // Check if the hash is valid
+    bool valid = his[his.length - 1] == h;
+    if (!valid) revert InvalidProof({subject: keySubject});
   }
 
   function _updatePriceOracle(address keySubject, uint256 newPrice) internal {
@@ -363,108 +463,6 @@ contract SubscriptionKeys is
     historicalPriceHashes[keySubject].push(newHash);
   }
 
-  function _getFeeBreakdown(
-    Common.SubjectTraderInfo[] memory subInfos,
-    address trader,
-    Proof[] calldata proofs
-  ) internal returns (FeeBreakdown[] memory _breakdown, uint256 _totalFees) {
-    require(
-      proofs.length == subInfos.length,
-      "Proofs and subInfos length mismatch"
-    );
-
-    FeeBreakdown[] memory breakdown = new FeeBreakdown[](subInfos.length);
-    uint256 totalFees = 0;
-    for (uint256 i = 0; i < proofs.length; i++) {
-      if (proofs[i].keySubject != subInfos[i].keySubject)
-        revert InvalidProofsOrder();
-
-      uint256 feeForSubject = _calculateFeeForSubject(
-        subInfos[i],
-        trader,
-        proofs[i]
-      );
-      totalFees += feeForSubject;
-      breakdown[i] = FeeBreakdown({
-        fees: feeForSubject,
-        keySubject: subInfos[i].keySubject
-      });
-    }
-
-    return (breakdown, totalFees);
-  }
-
-  function _calculateFeeForSubject(
-    Common.SubjectTraderInfo memory subjectInfo,
-    address trader,
-    Proof calldata proof
-  ) internal returns (uint256 _fee) {
-    bytes32 initialHash = getStartHash(subjectInfo.keySubject, trader);
-
-    PriceInteractionRecord memory info = traderInfos[subjectInfo.keySubject][
-      trader
-    ];
-    uint256 lastInteractionTime = uint256(info.lastInteractionTime);
-    (uint256 fee, bytes32 h) = getFeeWithFinalHash(
-      lastInteractionTime,
-      initialHash,
-      proof,
-      subjectInfo.balance
-    );
-    verifyHash(h, subjectInfo.keySubject, trader);
-
-    return fee;
-  }
-
-  function getFeeWithFinalHash(
-    uint256 lastInteractionTime,
-    bytes32 initialHash,
-    Proof calldata proof,
-    uint256 balance
-  ) internal view returns (uint256 fees, bytes32 h) {
-    Common.PriceChange[] calldata pastPrices = proof.pcs;
-    require(pastPrices.length > 0, "No past prices");
-
-    bytes32 currentHash = initialHash;
-    uint256 endIndex = pastPrices.length - 1;
-    uint256 totalFee = 0;
-    for (uint256 i = 0; i <= endIndex; i++) {
-      // Update the hash chain
-      currentHash = keccak256(abi.encode(pastPrices[i], currentHash));
-      uint256 nextTimestamp = i < endIndex
-        ? pastPrices[i + 1].startTimestamp
-        : block.timestamp;
-
-      // if Proof contains elements before their last iteraction index don't count toward fee
-      if (lastInteractionTime > nextTimestamp) {
-        continue;
-      }
-
-      uint256 lastTimestamp = pastPrices[i].startTimestamp;
-      uint256 startInterestAt = lastInteractionTime > lastTimestamp &&
-        lastInteractionTime <= nextTimestamp
-        ? lastInteractionTime
-        : lastTimestamp;
-
-      totalFee += ComputeUtils._calculateFeeBetweenTimes(
-        balance * pastPrices[i].price,
-        startInterestAt,
-        nextTimestamp,
-        pastPrices[i].rate
-      );
-    }
-
-    return (totalFee, currentHash);
-  }
-
-  function verifyHash(bytes32 h, address keySubject, address trader) internal {
-    bytes32[] storage his = historicalPriceHashes[keySubject];
-
-    // Check if the hash is valid
-    bool valid = his[his.length - 1] == h;
-    if (!valid) revert InvalidProof({subject: keySubject});
-  }
-
   function _updatePriceInteractionRecord(
     address keySubject,
     address trader
@@ -507,20 +505,25 @@ contract SubscriptionKeys is
     return idx;
   }
 
+  //getPriceProof only to be used externally to construct proofs to conduct mutations
   function getPriceProof(
-    address keySubject,
     address trader
-  ) external view returns (Proof memory) {
-    require(initializedKeySubjects[keySubject], "KeySubject not initialized");
+  ) external view returns (Proof[] memory) {
+    Common.SubjectTraderInfo[] memory ownedKeys = getTraderSubjectInfo(trader);
+    Proof[] memory proofs = new Proof[](ownedKeys.length);
+    for (uint256 i = 0; i < ownedKeys.length; i++) {
+      address ks = ownedKeys[i].keySubject;
+      uint256 startIndex = getLastTraderPriceIndex(ks, trader);
 
-    uint256 startIndex = getLastTraderPriceIndex(keySubject, trader);
-    uint256 length = historicalPriceChanges[keySubject].length - startIndex;
-    Common.PriceChange[] memory pc = new Common.PriceChange[](length);
-    for (uint256 i = 0; i < length; i++) {
-      pc[i] = historicalPriceChanges[keySubject][startIndex + i];
+      uint256 length = historicalPriceChanges[ks].length - startIndex;
+      Common.PriceChange[] memory pc = new Common.PriceChange[](length);
+      for (uint256 j = 0; j < length; j++) {
+        pc[j] = historicalPriceChanges[ks][startIndex + j];
+      }
+      proofs[i] = Proof({keySubject: ks, pcs: pc});
     }
 
-    return Proof({keySubject: keySubject, pcs: pc});
+    return proofs;
   }
 
   // -------------- Pool Requirement methods ----------------
@@ -529,20 +532,7 @@ contract SubscriptionKeys is
   function increaseSubscriptionPool(Proof[] calldata proofs) external payable {
     address trader = msg.sender;
 
-    // collect fees
-    uint256 lastSubPool = getSubscriptionPool(trader);
-    Common.SubjectTraderInfo[] memory subInfo = getTraderSubjectInfo(trader);
-    (FeeBreakdown[] memory breakdown, uint256 totalFees) = _getFeeBreakdown(
-      subInfo,
-      trader,
-      proofs
-    );
-    uint256 newDeposit = _distributeFees(
-      breakdown,
-      lastSubPool,
-      totalFees,
-      trader
-    );
+    uint256 newDeposit = collectFees(trader, proofs);
     newDeposit = newDeposit + msg.value;
     uint256 req = _getUnchangingPoolRequirement(trader, address(0));
     if (req > newDeposit) revert InsufficientSubscriptionPool();
@@ -557,19 +547,7 @@ contract SubscriptionKeys is
     address trader = msg.sender;
 
     // collect fees
-    uint256 lastSubPool = getSubscriptionPool(trader);
-    Common.SubjectTraderInfo[] memory subInfo = getTraderSubjectInfo(trader);
-    (FeeBreakdown[] memory breakdown, uint256 totalFees) = _getFeeBreakdown(
-      subInfo,
-      trader,
-      proofs
-    );
-    uint256 newDeposit = _distributeFees(
-      breakdown,
-      lastSubPool,
-      totalFees,
-      trader
-    );
+    uint256 newDeposit = collectFees(trader, proofs);
     newDeposit = newDeposit - amount;
     uint256 req = _getUnchangingPoolRequirement(trader, address(0));
     if (req > newDeposit) revert InsufficientSubscriptionPool();
