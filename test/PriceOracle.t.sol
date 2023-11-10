@@ -12,21 +12,11 @@ contract PriceOracleTest is HarnessSetup {
     uint256 initialPrice = 100;
     harness.exposedUpdatePriceOracle(owner, initialPrice);
 
-    Common.PriceChange[] memory recentChanges = harness
-      .exposedGetRecentPriceChanges(owner);
+    RunningTotal memory rt = harness.exposedGetRunningTotal(owner);
     Common.PriceChange[] memory historicalChanges = harness
       .exposedGetHistoricalPriceChanges(owner);
 
-    // Confirm recentPriceChanges was appended
-    assertTrue(
-      recentChanges.length == 1,
-      "recentPriceChanges should have 1 entry"
-    );
-    assertEq(
-      recentChanges[0].price,
-      initialPrice,
-      "Price in recentPriceChanges should match the initial price"
-    );
+    assertTrue(rt.lastPrice == 100, "runningtotal should be mutated");
 
     // Confirm historicalPriceChanges was not appended
     assertTrue(
@@ -44,31 +34,26 @@ contract PriceOracleTest is HarnessSetup {
     harness.exposedUpdatePriceOracle(owner, initialPrice);
 
     // Warp the time by 12 hours
-    vm.warp(block.timestamp + period);
+    uint256 newTime = block.timestamp + period;
+    vm.warp(newTime);
 
     // Update the price oracle again
     harness.exposedUpdatePriceOracle(owner, newPrice);
 
-    Common.PriceChange[] memory recentChanges = harness
-      .exposedGetRecentPriceChanges(owner);
+    RunningTotal memory rt = harness.exposedGetRunningTotal(owner);
     Common.PriceChange[] memory historicalChanges = harness
       .exposedGetHistoricalPriceChanges(owner);
 
-    // Confirm recentPriceChanges was cleared
+    assertTrue(rt.lastPrice == newPrice, "running total should still be 0");
     assertTrue(
-      recentChanges.length == 1,
-      "recentPriceChanges should have 1 entry after warping"
-    );
-    assertEq(
-      recentChanges[0].price,
-      150,
-      "Price in recentPriceChanges should match the new price after warping"
+      rt.lastUpdateTime == newTime,
+      "running total timestamp should be 0"
     );
 
     // Confirm historicalPriceChanges was appended
     assertTrue(
       historicalChanges.length == 2,
-      "historicalPriceChanges should have 1 entry after warping"
+      "historicalPriceChanges should have 2 entry after warping"
     );
     assertEq(
       historicalChanges[1].price,
@@ -77,41 +62,13 @@ contract PriceOracleTest is HarnessSetup {
     );
   }
 
-  function testTimeWeightedAveragePrice() public {
+  function testRunningTotal() public {
     uint256 price1 = 10000;
     uint256 price2 = 11000;
     uint256 price3 = 12000;
     uint256 price4 = 13000;
 
     uint256 startTime = block.timestamp;
-    Common.PriceChange[] memory recentPriceChanges = new Common.PriceChange[](
-      4
-    );
-
-    recentPriceChanges[0] = Common.PriceChange({
-      price: price1,
-      rate: 0,
-      startTimestamp: uint112(startTime + 1 hours),
-      index: 0
-    });
-    recentPriceChanges[1] = Common.PriceChange({
-      price: price2,
-      rate: 0,
-      startTimestamp: uint112(startTime + 4 hours),
-      index: 1
-    });
-    recentPriceChanges[2] = Common.PriceChange({
-      price: price3,
-      rate: 0,
-      startTimestamp: uint112(startTime + 9 hours),
-      index: 2
-    });
-    recentPriceChanges[3] = Common.PriceChange({
-      price: price4,
-      rate: 0,
-      startTimestamp: uint112(startTime + 11 hours),
-      index: 3
-    });
 
     // Adding the initial price
     vm.warp(startTime + 1 hours);
@@ -141,13 +98,30 @@ contract PriceOracleTest is HarnessSetup {
       historicalChanges.length == 2,
       "historicalPriceChanges should have entries after warping"
     );
+
+    // TWAP calculation
+    uint256 weightedPrice1 = price1 * 3 hours * SCALE;
+    uint256 weightedPrice2 = price2 * 5 hours * SCALE;
+    uint256 weightedPrice3 = price3 * 2 hours * SCALE;
+
+    uint256 totalWeightedPrice = weightedPrice1 +
+      weightedPrice2 +
+      weightedPrice3;
+    uint256 totalDuration = (1 hours + 3 hours + 5 hours + 2 hours) * SCALE;
+
+    uint256 twap = totalWeightedPrice / (totalDuration);
     assertEq(
       historicalChanges[historicalChanges.length - 1].price,
-      ComputeUtils.calculateTimeWeightedAveragePrice(
-        recentPriceChanges,
-        startTime + period + 1
-      ),
+      twap,
       "Price in historicalPriceChanges should match the expected TWAP after warping"
+    );
+
+    RunningTotal memory rt = harness.exposedGetRunningTotal(owner);
+    assertEq(rt.lastPrice, price4, "lastPrice should match");
+    assertEq(
+      rt.lastUpdateTime,
+      startTime + period + 1,
+      "lastUpdateTime should match"
     );
   }
 

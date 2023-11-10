@@ -7,4 +7,7 @@ interface ISubscriptionKeysErrors {
   error SubjectProofMissing(address subject);
   /// @notice Thrown if subscriptionPool isnt enough to cover miminum subscriptionPool
   error InvalidProof(address subject);
+  error InvalidProofsOrder();
+  error InvalidProofsLength();
+  error ProtocolFeeTransferFailed();
 }

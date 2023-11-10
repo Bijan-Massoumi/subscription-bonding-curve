@@ -3,6 +3,7 @@ pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/utils/structs/EnumerableMap.sol";
 import "./Common.sol";
+import "forge-std/console.sol";
 
 abstract contract TraderKeyTracker {
   using EnumerableMap for EnumerableMap.AddressToUintMap;
@@ -28,6 +29,14 @@ abstract contract TraderKeyTracker {
     }
 
     return contractInfos;
+  }
+
+  function traderOwnsKeySubject(
+    address trader,
+    address keySubject
+  ) internal view returns (bool) {
+    (bool e, ) = _groupedTraderKeyContractBalances[trader].tryGet(keySubject);
+    return e;
   }
 
   function _updateOwnedSubjectSet(

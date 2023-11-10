@@ -10,9 +10,9 @@ contract BuyKeysTest is IntegratedSetup {
   function testBalanceChangeAfterBuySale() public {
     vm.deal(owner, 100 ether);
 
-    Proof[] memory proof = new Proof[](1);
-    proof[0] = subKey.getPriceProof(owner, owner);
-    assertEqUint(proof[0].pcs[0].price, 0);
+    Proof[] memory proof;
+    proof = subKey.getPriceProof(owner);
+    assertEqUint(proof.length, 0);
 
     // Buy 1 key
     vm.startPrank(owner);
@@ -21,12 +21,16 @@ contract BuyKeysTest is IntegratedSetup {
     assertEqUint(subKey.balanceOf(owner, owner), 1);
     assertEqUint(subKey.balanceOf(owner, addr1), 0);
 
-    uint256 p = subKey.getBuyPrice(owner, 1);
+    uint256 p = subKey.getBuyPriceAfterFee(owner, 1);
+    proof = subKey.getPriceProof(owner);
+    assertEqUint(proof.length, 1);
     subKey.buyKeys{value: p}(owner, 1, proof);
     assertEqUint(subKey.balanceOf(owner, owner), 2);
 
     // sell
-    proof[0] = subKey.getPriceProof(owner, owner);
+    proof = subKey.getPriceProof(owner);
+    assertEqUint(proof.length, 1);
+
     subKey.sellKeys(owner, 1, proof);
     assertEqUint(subKey.balanceOf(owner, owner), 1);
     vm.stopPrank();

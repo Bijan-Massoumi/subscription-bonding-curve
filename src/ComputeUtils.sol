@@ -4,7 +4,7 @@ pragma solidity ^0.8.20;
 import "forge-std/console.sol";
 import "./Common.sol";
 
-uint256 constant SCALE = 1e4;
+uint256 constant SCALE = 1 ether;
 
 library ComputeUtils {
   uint256 constant secondsInYear = 365 days;
@@ -20,30 +20,15 @@ library ComputeUtils {
       (secondsInYear * SCALE);
   }
 
-  function calculateTimeWeightedAveragePrice(
-    Common.PriceChange[] memory recentPriceChanges,
-    uint256 currentTime
-  ) internal pure returns (uint256 averagePrice) {
-    uint256 totalWeightedPrice = 0;
-    uint256 totalDuration = 0;
-
-    // If there's at least one price change in the recent changes
-    if (recentPriceChanges.length > 0) {
-      // Calculate the time-weighted average
-      for (uint256 i = 0; i < recentPriceChanges.length; i++) {
-        uint256 duration;
-        if (i == recentPriceChanges.length - 1) {
-          duration = currentTime - recentPriceChanges[i].startTimestamp;
-        } else {
-          duration =
-            recentPriceChanges[i + 1].startTimestamp -
-            recentPriceChanges[i].startTimestamp;
-        }
-
-        totalWeightedPrice += duration * recentPriceChanges[i].price;
-        totalDuration += duration;
-      }
-    }
-    return totalWeightedPrice / totalDuration;
+  function _getTimeLiquidationBegan(
+    uint256 price,
+    uint256 lastCheckInAt,
+    uint256 feeRate,
+    uint256 subscriptionPoolRemaining
+  ) internal pure returns (uint256 liquidationStartedAt) {
+    liquidationStartedAt =
+      (subscriptionPoolRemaining * (secondsInYear * 10000)) /
+      (feeRate * price) +
+      lastCheckInAt;
   }
 }
