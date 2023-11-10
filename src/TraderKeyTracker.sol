@@ -3,6 +3,7 @@ pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/utils/structs/EnumerableMap.sol";
 import "./Common.sol";
+import "forge-std/console.sol";
 
 abstract contract TraderKeyTracker {
   using EnumerableMap for EnumerableMap.AddressToUintMap;

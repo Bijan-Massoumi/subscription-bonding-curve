@@ -190,7 +190,7 @@ contract SubscriptionKeys is
     address trader = msg.sender;
 
     uint256 newDeposit = collectFees(trader, proofs);
-    newDeposit -= (msg.value - price - protocolFee);
+    newDeposit += (msg.value - price - protocolFee);
     // if we didnt already verify a proof for this subject, we need to update the trader info
     bool exists = traderOwnsKeySubject(trader, keySubject);
     if (!exists) _updatePriceInteractionRecord(keySubject, trader);
@@ -308,10 +308,7 @@ contract SubscriptionKeys is
     view
     returns (FeeBreakdown[] memory _breakdown, uint256 _totalFees)
   {
-    require(
-      proofs.length == subInfos.length,
-      "Proofs and subInfos length mismatch"
-    );
+    if (proofs.length != subInfos.length) revert InvalidProofsLength();
 
     FeeBreakdown[] memory breakdown = new FeeBreakdown[](subInfos.length);
     uint256 totalFees = 0;
@@ -571,7 +568,7 @@ contract SubscriptionKeys is
     uint256 newPrice = getBuyPrice(buySubject, amount);
     uint256 newBalance = balanceOf(buySubject, trader) + amount;
     uint256 additionalRequirement = (newPrice * newBalance * minimumPoolRatio) /
-      10000;
+      1 ether;
 
     // Add the additional requirement to the total requirement
     totalRequirement += additionalRequirement;
@@ -594,7 +591,7 @@ contract SubscriptionKeys is
       }
 
       uint256 price = getCurrentPrice(buySubject);
-      uint256 requirement = (price * balance * minimumPoolRatio) / 10000;
+      uint256 requirement = (price * balance * minimumPoolRatio) / 1 ether;
 
       totalRequirement += requirement;
     }

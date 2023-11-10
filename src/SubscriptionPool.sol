@@ -18,9 +18,9 @@ abstract contract SubscriptionPool is ISubscriptionPoolErrors {
 
   // min percentage (10%) of total stated price that
   // move to groupInfo
-  uint256 internal minimumPoolRatio = 1000;
+  uint256 internal minimumPoolRatio = 100000000000000000;
   // 100% pool percent
-  uint256 internal maxMinimumPoolRatio = 10000;
+  uint256 internal maxMinimumPoolRatio = 1 ether;
 
   function _setMinimumPoolRatio(uint256 newMinimumPoolRatio) internal {
     minimumPoolRatio = newMinimumPoolRatio;

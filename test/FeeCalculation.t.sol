@@ -36,19 +36,19 @@ contract FeeCalculationTest is HarnessSetup, ISubscriptionKeysErrors {
     pcs = new Common.PriceChange[](3);
     pcs[0] = Common.PriceChange({
       price: 1 ether,
-      rate: uint128(1000),
+      rate: uint128(tenPercent),
       startTimestamp: uint112(t1),
       index: 1
     });
     pcs[1] = Common.PriceChange({
       price: 2 ether,
-      rate: uint128(1000),
+      rate: uint128(tenPercent),
       startTimestamp: uint112(t2),
       index: 2
     });
     pcs[2] = Common.PriceChange({
       price: 1 ether / 2,
-      rate: uint128(1000),
+      rate: uint128(tenPercent),
       startTimestamp: uint112(t3),
       index: 3
     });
@@ -69,8 +69,8 @@ contract FeeCalculationTest is HarnessSetup, ISubscriptionKeysErrors {
       uint256 t3,
       uint256 endTime
     ) = _createPriceChanges(t0, owner);
-    Proof[] memory proof = new Proof[](1);
-    proof[0] = harness.getPriceProof(owner, owner);
+    Proof[] memory proof;
+    proof = harness.getPriceProof(owner);
     // confirm that proof[0] == pcs
     assertEqUint(proof[0].pcs[0].price, 0);
     assertEqUint(proof[0].pcs[1].price, pcs[0].price);
@@ -84,20 +84,20 @@ contract FeeCalculationTest is HarnessSetup, ISubscriptionKeysErrors {
     assertEqUint(subInfo.length, 1);
     assertEq(subInfo[0].keySubject, owner);
 
-    uint256 fee = harness.exposedVerifyAndCollectFees(
-      subInfo,
-      owner,
-      owner,
-      proof
-    );
+    (, uint256 fee) = harness.exposedGetFeeBreakdown(subInfo, owner, proof);
 
     // Validate the calculated fee against the expected fee:
     assertEq(
       fee,
-      ComputeUtils._calculateFeeBetweenTimes(0, t0, t1, 1000) +
-        ComputeUtils._calculateFeeBetweenTimes(1 ether, t1, t2, 1000) +
-        ComputeUtils._calculateFeeBetweenTimes(2 ether, t2, t3, 1000) +
-        ComputeUtils._calculateFeeBetweenTimes(0.5 ether, t3, endTime, 1000),
+      ComputeUtils._calculateFeeBetweenTimes(0, t0, t1, tenPercent) +
+        ComputeUtils._calculateFeeBetweenTimes(1 ether, t1, t2, tenPercent) +
+        ComputeUtils._calculateFeeBetweenTimes(2 ether, t2, t3, tenPercent) +
+        ComputeUtils._calculateFeeBetweenTimes(
+          0.5 ether,
+          t3,
+          endTime,
+          tenPercent
+        ),
       "The fee does not match the expected value"
     );
 
@@ -123,26 +123,26 @@ contract FeeCalculationTest is HarnessSetup, ISubscriptionKeysErrors {
     Common.SubjectTraderInfo[] memory subInfo = harness.getTraderSubjectInfo(
       owner
     );
-    Proof[] memory proof = _getProofForSubjects(owner, owner);
+    Proof[] memory proof = harness.getPriceProof(owner);
     assertEqUint(proof.length, 2);
 
     vm.warp(endTime);
-    uint256 fee = harness.exposedVerifyAndCollectFees(
-      subInfo,
-      owner,
-      owner,
-      proof
-    );
+    (, uint256 fee) = harness.exposedGetFeeBreakdown(subInfo, owner, proof);
 
     uint256 expectedSingle = ComputeUtils._calculateFeeBetweenTimes(
       0,
       t0,
       t1,
-      1000
+      tenPercent
     ) +
-      ComputeUtils._calculateFeeBetweenTimes(1 ether, t1, t2, 1000) +
-      ComputeUtils._calculateFeeBetweenTimes(2 ether, t2, t3, 1000) +
-      ComputeUtils._calculateFeeBetweenTimes(0.5 ether, t3, endTime, 1000);
+      ComputeUtils._calculateFeeBetweenTimes(1 ether, t1, t2, tenPercent) +
+      ComputeUtils._calculateFeeBetweenTimes(2 ether, t2, t3, tenPercent) +
+      ComputeUtils._calculateFeeBetweenTimes(
+        0.5 ether,
+        t3,
+        endTime,
+        tenPercent
+      );
 
     assertEq(
       fee,
@@ -178,11 +178,16 @@ contract FeeCalculationTest is HarnessSetup, ISubscriptionKeysErrors {
         0,
         t0,
         t1,
-        1000
+        tenPercent
       ) +
-        ComputeUtils._calculateFeeBetweenTimes(1 ether, t1, t2, 1000) +
-        ComputeUtils._calculateFeeBetweenTimes(2 ether, t2, t3, 1000) +
-        ComputeUtils._calculateFeeBetweenTimes(0.5 ether, t3, endTime, 1000);
+        ComputeUtils._calculateFeeBetweenTimes(1 ether, t1, t2, tenPercent) +
+        ComputeUtils._calculateFeeBetweenTimes(2 ether, t2, t3, tenPercent) +
+        ComputeUtils._calculateFeeBetweenTimes(
+          0.5 ether,
+          t3,
+          endTime,
+          tenPercent
+        );
 
       expected += expectedSingle * 2;
       endTimeFinal = endTime;
@@ -199,26 +204,25 @@ contract FeeCalculationTest is HarnessSetup, ISubscriptionKeysErrors {
         0,
         t0 + 1 days,
         t11,
-        1000
+        tenPercent
       ) +
-        ComputeUtils._calculateFeeBetweenTimes(1 ether, t11, t22, 1000) +
-        ComputeUtils._calculateFeeBetweenTimes(2 ether, t22, t33, 1000) +
+        ComputeUtils._calculateFeeBetweenTimes(1 ether, t11, t22, tenPercent) +
+        ComputeUtils._calculateFeeBetweenTimes(2 ether, t22, t33, tenPercent) +
         ComputeUtils._calculateFeeBetweenTimes(
           0.5 ether,
           t33,
           endTimeFinal,
-          1000
+          tenPercent
         );
 
       expected += expectedSecond;
     }
 
     vm.warp(endTimeFinal);
-    Proof[] memory proof = _getProofForSubjects(owner, owner);
+    Proof[] memory proof = harness.getPriceProof(owner);
     assertEqUint(proof.length, 3);
-    uint256 fee = harness.exposedVerifyAndCollectFees(
+    (, uint256 fee) = harness.exposedGetFeeBreakdown(
       harness.getTraderSubjectInfo(owner),
-      owner,
       owner,
       proof
     );
@@ -240,25 +244,18 @@ contract FeeCalculationTest is HarnessSetup, ISubscriptionKeysErrors {
     (, , , , uint256 endTime) = _createPriceChanges(t0 + 1 days, addr2);
 
     vm.warp(endTime);
-    Proof[] memory proof = _getProofForSubjects(owner, owner);
+    Proof[] memory proof = harness.getPriceProof(owner);
     assertEqUint(proof.length, 3);
 
     Proof[] memory invalidProof = removeProof(proof, owner);
     assertEqUint(invalidProof.length, 2);
 
-    Common.SubjectTraderInfo[] memory subInfos = harness.getTraderSubjectInfo(
-      owner
-    );
-    vm.expectRevert(
-      abi.encodeWithSelector(SubjectProofMissing.selector, owner)
-    );
-    harness.exposedVerifyAndCollectFees(subInfos, owner, owner, invalidProof);
+    vm.expectRevert(abi.encodeWithSelector(InvalidProofsLength.selector));
+    harness.exposedCollectFees(owner, invalidProof);
 
     invalidProof = removeProof(proof, addr1);
-    vm.expectRevert(
-      abi.encodeWithSelector(SubjectProofMissing.selector, addr1)
-    );
-    harness.exposedVerifyAndCollectFees(subInfos, owner, owner, invalidProof);
+    vm.expectRevert(abi.encodeWithSelector(InvalidProofsLength.selector));
+    harness.exposedCollectFees(owner, invalidProof);
   }
 
   function removeProof(

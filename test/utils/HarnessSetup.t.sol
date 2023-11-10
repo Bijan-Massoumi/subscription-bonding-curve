@@ -52,13 +52,19 @@ contract KeyHarness is SubscriptionKeys {
   }
 
   // First, we will expose the internal methods we want to test using the Harness.
-  function exposedVerifyAndCollectFees(
-    Common.SubjectTraderInfo[] memory subInfo,
-    address buySubject,
+  function exposedCollectFees(
     address trader,
     Proof[] calldata proofs
   ) public returns (uint256) {
-    return _verifyAndCollectFees(subInfo, buySubject, trader, proofs);
+    return collectFees(trader, proofs);
+  }
+
+  function exposedGetFeeBreakdown(
+    Common.SubjectTraderInfo[] memory subInfos,
+    address trader,
+    Proof[] calldata proofs
+  ) public view returns (FeeBreakdown[] memory _breakdown, uint256 _totalFees) {
+    return _getFeeBreakdown(subInfos, trader, proofs);
   }
 }
 
@@ -69,43 +75,12 @@ abstract contract HarnessSetup is Test {
   address addr2 = address(3);
   address destination = address(4);
   KeyHarness harness;
+  uint256 tenPercent = 100000000000000000;
 
   function _buy(address trader, address subject) internal {
-    Proof[] memory proof = _getProofForSubjects(trader, subject);
+    Proof[] memory proof = harness.getPriceProof(trader);
     vm.prank(trader);
     harness.buyKeys{value: 5 ether}(subject, 1, proof);
-  }
-
-  function _getProofForSubjects(
-    address trader,
-    address subject
-  ) internal view returns (Proof[] memory) {
-    Common.SubjectTraderInfo[] memory ci = harness.getTraderSubjectInfo(trader);
-
-    // 1. Check if h address is in ci
-    bool isHInCi = false;
-    for (uint256 j = 0; j < ci.length; j++) {
-      if (address(ci[j].keySubject) == subject) {
-        isHInCi = true;
-        break;
-      }
-    }
-
-    // 2. Adjust the size of proof array based on the presence of h in ci
-    uint256 proofLength = isHInCi ? ci.length : ci.length + 1;
-    Proof[] memory proof = new Proof[](proofLength);
-
-    // 3. Populate the proof array
-    for (uint256 i = 0; i < ci.length; i++) {
-      proof[i] = harness.getPriceProof(ci[i].keySubject, trader);
-    }
-
-    // If h was not in ci, get its getPriceProof and assign it to the last position in proof
-    if (!isHInCi) {
-      proof[ci.length] = harness.getPriceProof(subject, trader);
-    }
-
-    return proof;
   }
 
   function setUp() public {
@@ -118,13 +93,13 @@ abstract contract HarnessSetup is Test {
     harness.setProtocolFeePercent(50000000000000000);
     harness.setProtocolFeeDestination(destination);
 
-    harness.initializeKeySubject(1000);
+    harness.initializeKeySubject(tenPercent);
     vm.stopPrank();
 
     vm.prank(addr1);
-    harness.initializeKeySubject(1000);
+    harness.initializeKeySubject(tenPercent);
 
     vm.prank(addr2);
-    harness.initializeKeySubject(1000);
+    harness.initializeKeySubject(tenPercent);
   }
 }

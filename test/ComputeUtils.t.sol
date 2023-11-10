@@ -66,26 +66,28 @@ contract ComputeUtilsTest is Test {
   // }
 
   function testCalculateFeeForOneDay() public {
+    uint256 rate = 10 * 1 ether;
     uint256 fee = ComputeUtils._calculateFeeBetweenTimes(
       100 ether, // totalStatedPrice
       0, // startTime
       1 days, // endTime
-      10
+      10 * 1 ether // feeRate
     );
-    uint256 expectedFeeNumerator = 100 ether * 1 days * 10;
-    uint256 expectedFee = expectedFeeNumerator / 365 days / 10000; // As feeRate is in thousandths
+    uint256 expectedFeeNumerator = 100 ether * 1 days * rate;
+    uint256 expectedFee = expectedFeeNumerator / 365 days / SCALE; // As feeRate is in thousandths
     assertEq(fee, expectedFee, "Fee does not match expected for one day");
   }
 
   function testCalculateFeeForHalfYear() public {
+    uint256 rate = 5 * 1 ether;
     uint256 fee = ComputeUtils._calculateFeeBetweenTimes(
       200 ether, // totalStatedPrice
       0, // startTime
       182 days, // endTime (half year)
-      5
+      rate // feeRate
     );
-    uint256 expectedFeeNumerator = 200 ether * 182 days * 5;
-    uint256 expectedFee = expectedFeeNumerator / 365 days / 10000; // As feeRate is in thousandths
+    uint256 expectedFeeNumerator = 200 ether * 182 days * rate;
+    uint256 expectedFee = expectedFeeNumerator / 365 days / SCALE; // As feeRate is in thousandths
     assertEq(fee, expectedFee, "Fee does not match expected for half year");
   }
 

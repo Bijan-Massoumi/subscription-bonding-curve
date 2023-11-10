@@ -11,19 +11,26 @@ abstract contract IntegratedSetup is Test {
   address owner = address(1);
   address addr1 = address(2);
   address addr2 = address(3);
+  address destination = address(4);
+
+  uint256 tenPercent = 100000000000000000;
 
   SubscriptionKeys subKey;
 
   function setUp() public {
-    vm.prank(owner);
+    vm.startPrank(owner);
     subKey = new SubscriptionKeys();
-    vm.prank(owner);
-    subKey.initializeKeySubject(1000);
+
+    subKey.setProtocolFeePercent(50000000000000000);
+    subKey.setProtocolFeeDestination(destination);
+
+    subKey.initializeKeySubject(tenPercent);
+    vm.stopPrank();
 
     vm.prank(addr1);
-    subKey.initializeKeySubject(1000);
+    subKey.initializeKeySubject(tenPercent);
 
     vm.prank(addr2);
-    subKey.initializeKeySubject(1000);
+    subKey.initializeKeySubject(tenPercent);
   }
 }
