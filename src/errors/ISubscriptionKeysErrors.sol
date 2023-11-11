@@ -10,4 +10,5 @@ interface ISubscriptionKeysErrors {
   error InvalidProofsOrder();
   error InvalidProofsLength();
   error ProtocolFeeTransferFailed();
+  error CannotLiquidate();
 }
