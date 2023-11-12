@@ -19,4 +19,16 @@ library ComputeUtils {
       (feeRate * totalStatedPrice * (endTime - startTime)) /
       (secondsInYear * SCALE);
   }
+
+  function _getTimeBondDepleted(
+    uint256 price,
+    uint256 startTime,
+    uint256 subscriptionPoolRemaining,
+    uint256 feeRate
+  ) internal pure returns (uint256 liquidationStartedAt) {
+    liquidationStartedAt =
+      (subscriptionPoolRemaining * (secondsInYear * SCALE)) /
+      (feeRate * price) +
+      startTime;
+  }
 }

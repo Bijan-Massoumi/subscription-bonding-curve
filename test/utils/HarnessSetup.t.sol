@@ -46,9 +46,9 @@ contract KeyHarness is SubscriptionKeys {
   // Deploy this contract then call this method to test `myInternalMethod`.
   function exposedUpdatePriceOracle(
     address keySubject,
-    uint256 newPrice
+    uint256 price
   ) external {
-    return _updatePriceOracle(keySubject, newPrice);
+    return _updatePriceOracle(keySubject, price);
   }
 
   // First, we will expose the internal methods we want to test using the Harness.
@@ -75,7 +75,7 @@ abstract contract HarnessSetup is Test {
   address addr2 = address(3);
   address destination = address(4);
   KeyHarness harness;
-  uint256 tenPercent = 100000000000000000;
+  uint256 feeRate = 100000000000000000;
 
   function _buy(address trader, address subject) internal {
     Proof[] memory proof = harness.getPriceProof(trader);
@@ -92,14 +92,15 @@ abstract contract HarnessSetup is Test {
     harness = new KeyHarness();
     harness.setProtocolFeePercent(50000000000000000);
     harness.setProtocolFeeDestination(destination);
+    harness.setLiquidationPenalty(150000000000000000);
 
-    harness.initializeKeySubject(tenPercent);
+    harness.initializeKeySubject(feeRate);
     vm.stopPrank();
 
     vm.prank(addr1);
-    harness.initializeKeySubject(tenPercent);
+    harness.initializeKeySubject(feeRate);
 
     vm.prank(addr2);
-    harness.initializeKeySubject(tenPercent);
+    harness.initializeKeySubject(feeRate);
   }
 }

@@ -67,6 +67,7 @@ contract SubscriptionKeys is
 
   uint256 protocolFeePercent;
   address protocolFeeDestination;
+  uint256 liquidationPenalty;
 
   uint256 period = 43_200;
 
@@ -79,8 +80,24 @@ contract SubscriptionKeys is
     protocolFeePercent = _feePercent;
   }
 
+  function getProtocolFeePercent() public view returns (uint256) {
+    return protocolFeePercent;
+  }
+
   function setProtocolFeeDestination(address _feeDestination) public onlyOwner {
     protocolFeeDestination = _feeDestination;
+  }
+
+  function getProtocolFeeDestination() public view returns (address) {
+    return protocolFeeDestination;
+  }
+
+  function setLiquidationPenalty(uint256 _penalty) public onlyOwner {
+    liquidationPenalty = _penalty;
+  }
+
+  function getLiquidationPenalty() public view returns (uint256) {
+    return liquidationPenalty;
   }
 
   // TODO add signature
@@ -111,6 +128,8 @@ contract SubscriptionKeys is
     historicalPriceChanges[_keySubject].push(newPriceChange);
     bytes32 h = keccak256(abi.encode(newPriceChange, bytes32(0)));
     historicalPriceHashes[_keySubject].push(h);
+
+    periodLastOccuredAt[_keySubject] = block.timestamp;
   }
 
   // Bonding Curve methods ------------------------
@@ -118,18 +137,20 @@ contract SubscriptionKeys is
     uint256 _supply,
     uint256 amount
   ) public pure returns (uint256) {
-    uint256 sum1 = _supply == 0
-      ? 0
-      : ((_supply - 1) * (_supply) * (2 * (_supply - 1) + 1)) / 6;
+    require(
+      _supply + amount >= _supply,
+      "Integer overflow in supply calculation"
+    );
 
-    uint256 sum2 = _supply == 0 && amount == 1
-      ? 0
-      : ((_supply - 1 + amount) *
-        (_supply + amount) *
-        (2 * (_supply - 1 + amount) + 1)) / 6;
+    uint256 sum1 = _supply == 0 ? 0 : sumOfSquares(_supply - 1);
+    uint256 sum2 = sumOfSquares(_supply + amount - 1);
 
     uint256 summation = sum2 - sum1;
     return (summation * 1 ether) / 16000;
+  }
+
+  function sumOfSquares(uint256 x) internal pure returns (uint256) {
+    return (x * (x + 1) * (2 * x + 1)) / 6;
   }
 
   function getBuyPrice(
@@ -151,7 +172,7 @@ contract SubscriptionKeys is
     uint256 amount
   ) public view returns (uint256) {
     uint256 price = getBuyPrice(sharesSubject, amount);
-    uint256 protocolFee = (price * protocolFeePercent) / 1 ether;
+    uint256 protocolFee = getProtocalFee(price);
     return price + protocolFee;
   }
 
@@ -160,8 +181,17 @@ contract SubscriptionKeys is
     uint256 amount
   ) public view returns (uint256) {
     uint256 price = getSellPrice(sharesSubject, amount);
-    uint256 protocolFee = (price * protocolFeePercent) / 1 ether;
+    uint256 protocolFee = getProtocalFee(price);
     return price - protocolFee;
+  }
+
+  function getProtocalFee(uint256 price) public view returns (uint256) {
+    return (price * protocolFeePercent) / 1 ether;
+  }
+
+  function getLiquidationPayment(uint256 price) public view returns (uint256) {
+    uint256 liquidationAmount = ((price) * liquidationPenalty) / 1 ether;
+    return liquidationAmount;
   }
 
   function getSupply(address keySubject) public view returns (uint256) {
@@ -187,27 +217,26 @@ contract SubscriptionKeys is
   ) public payable {
     require(amount > 0, "Cannot buy 0 keys");
     uint256 price = getPrice(keySupply[keySubject], amount);
-    uint256 protocolFee = (price * protocolFeePercent) / 1 ether;
+    uint256 protocolFee = getProtocalFee(price);
     require(msg.value >= price + protocolFee, "Inusfficient payment");
     address trader = msg.sender;
 
     uint256 newDeposit = collectFees(trader, proofs);
     newDeposit += (msg.value - price - protocolFee);
+
     // if we didnt already verify a proof for this subject, we need to update the trader info
     bool exists = traderOwnsKeySubject(trader, keySubject);
     if (!exists) _updatePriceInteractionRecord(keySubject, trader);
     uint256 req = getPoolRequirementForBuy(trader, keySubject, amount);
     require(req <= newDeposit, "Insufficient pool");
+    _updateTraderPool(trader, newDeposit);
 
     // adjust supply
     uint256 newBal = _balances[trader][keySubject] + amount;
-    keySupply[keySubject] += amount;
     _balances[trader][keySubject] = newBal;
-
-    // update checkpoints
+    keySupply[keySubject] += amount;
     _updateOwnedSubjectSet(newBal, trader, keySubject);
-    _updateTraderPool(trader, newDeposit);
-    _updatePriceOracle(keySubject, price);
+    _updatePriceOracle(keySubject, getCurrentPrice(keySubject));
 
     (bool success, ) = protocolFeeDestination.call{value: protocolFee}("");
     if (!success) revert ProtocolFeeTransferFailed();
@@ -224,23 +253,20 @@ contract SubscriptionKeys is
     require(amount > 0, "Cannot sell 0 keys");
 
     uint256 price = getPrice(supply - amount, amount);
-    uint256 protocolFee = (price * protocolFeePercent) / 1 ether;
+    uint256 protocolFee = getProtocalFee(price);
     address trader = msg.sender;
     uint256 currBalance = _balances[trader][keySubject];
     require(currBalance >= amount, "Insufficient keys");
 
     uint256 newDeposit = collectFees(trader, proofs);
     _updateTraderPool(trader, newDeposit);
-    // if we didnt already verify a proof for this subject, we need to update the trader info
-    bool exists = traderOwnsKeySubject(trader, keySubject);
-    if (!exists) _updatePriceInteractionRecord(keySubject, trader);
 
     // update checkpoints
     uint256 newBal = currBalance - amount;
     _balances[msg.sender][keySubject] = newBal;
-    supply = supply - amount;
+    keySupply[keySubject] -= amount;
     _updateOwnedSubjectSet(newBal, trader, keySubject);
-    _updatePriceOracle(keySubject, price);
+    _updatePriceOracle(keySubject, getCurrentPrice(keySubject));
 
     (bool success1, ) = msg.sender.call{value: price - protocolFee}("");
     (bool success2, ) = protocolFeeDestination.call{value: protocolFee}("");
@@ -258,13 +284,7 @@ contract SubscriptionKeys is
       trader,
       proofs
     );
-    uint256 newDeposit = _distributeFees(
-      breakdown,
-      lastSubPool,
-      totalFees,
-      trader
-    );
-    return newDeposit;
+    return _distributeFees(breakdown, lastSubPool, totalFees, trader);
   }
 
   function _distributeFees(
@@ -289,6 +309,7 @@ contract SubscriptionKeys is
         uint256 feeProportion = (breakdown[i].fees * lastSubPool * 1 ether) /
           totalScaledFees;
         address keySub = breakdown[i].keySubject;
+        console.log("feeProportion", feeProportion);
         (bool sent, ) = keySub.call{value: feeProportion}("");
         require(sent, "Pro-rata fee transfer failed");
 
@@ -375,13 +396,13 @@ contract SubscriptionKeys is
         : block.timestamp;
 
       // if Proof contains elements before their last iteraction index don't count toward fee
-      if (lastInteractionTime > nextTimestamp) {
+      if (lastInteractionTime >= nextTimestamp) {
         continue;
       }
 
       uint256 lastTimestamp = pastPrices[i].startTimestamp;
-      uint256 startInterestAt = lastInteractionTime > lastTimestamp &&
-        lastInteractionTime <= nextTimestamp
+      uint256 startInterestAt = lastInteractionTime >= lastTimestamp &&
+        lastInteractionTime < nextTimestamp
         ? lastInteractionTime
         : lastTimestamp;
 
@@ -601,5 +622,39 @@ contract SubscriptionKeys is
     return totalRequirement;
   }
 
-  // TODO liquidation
+  // -------------- Liquidation methods ----------------
+  function liquidateSubscriber(
+    address subscriber,
+    address keySubject,
+    Proof[] calldata proofs,
+    uint256 amount
+  ) external {
+    require(
+      balanceOf(keySubject, subscriber) >= amount,
+      "cannot liquidate more than balance"
+    );
+
+    uint256 newDeposit = collectFees(subscriber, proofs);
+    if (newDeposit != 0) revert CannotLiquidate();
+    _updateTraderPool(subscriber, 0);
+
+    uint256 price = getSellPrice(keySubject, amount);
+    uint256 protocolFee = getProtocalFee(price);
+    uint256 liquidatorPayment = getLiquidationPayment(price - protocolFee);
+
+    // update checkpoints
+    uint256 newBal = _balances[subscriber][keySubject] - amount;
+    keySupply[keySubject] -= amount;
+    _balances[subscriber][keySubject] = newBal;
+    _updateOwnedSubjectSet(newBal, subscriber, keySubject);
+    _updatePriceOracle(keySubject, getCurrentPrice(keySubject));
+
+    // send payments
+    (bool success1, ) = msg.sender.call{value: liquidatorPayment}("");
+    (bool success2, ) = protocolFeeDestination.call{value: protocolFee}("");
+    (bool success3, ) = subscriber.call{
+      value: price - protocolFee - liquidatorPayment
+    }("");
+    require(success1 && success2 && success3, "Unable to send funds");
+  }
 }

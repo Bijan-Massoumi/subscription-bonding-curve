@@ -36,19 +36,19 @@ contract FeeCalculationTest is HarnessSetup, ISubscriptionKeysErrors {
     pcs = new Common.PriceChange[](3);
     pcs[0] = Common.PriceChange({
       price: 1 ether,
-      rate: uint128(tenPercent),
+      rate: uint128(feeRate),
       startTimestamp: uint112(t1),
       index: 1
     });
     pcs[1] = Common.PriceChange({
       price: 2 ether,
-      rate: uint128(tenPercent),
+      rate: uint128(feeRate),
       startTimestamp: uint112(t2),
       index: 2
     });
     pcs[2] = Common.PriceChange({
       price: 1 ether / 2,
-      rate: uint128(tenPercent),
+      rate: uint128(feeRate),
       startTimestamp: uint112(t3),
       index: 3
     });
@@ -89,15 +89,10 @@ contract FeeCalculationTest is HarnessSetup, ISubscriptionKeysErrors {
     // Validate the calculated fee against the expected fee:
     assertEq(
       fee,
-      ComputeUtils._calculateFeeBetweenTimes(0, t0, t1, tenPercent) +
-        ComputeUtils._calculateFeeBetweenTimes(1 ether, t1, t2, tenPercent) +
-        ComputeUtils._calculateFeeBetweenTimes(2 ether, t2, t3, tenPercent) +
-        ComputeUtils._calculateFeeBetweenTimes(
-          0.5 ether,
-          t3,
-          endTime,
-          tenPercent
-        ),
+      ComputeUtils._calculateFeeBetweenTimes(0, t0, t1, feeRate) +
+        ComputeUtils._calculateFeeBetweenTimes(1 ether, t1, t2, feeRate) +
+        ComputeUtils._calculateFeeBetweenTimes(2 ether, t2, t3, feeRate) +
+        ComputeUtils._calculateFeeBetweenTimes(0.5 ether, t3, endTime, feeRate),
       "The fee does not match the expected value"
     );
 
@@ -133,16 +128,11 @@ contract FeeCalculationTest is HarnessSetup, ISubscriptionKeysErrors {
       0,
       t0,
       t1,
-      tenPercent
+      feeRate
     ) +
-      ComputeUtils._calculateFeeBetweenTimes(1 ether, t1, t2, tenPercent) +
-      ComputeUtils._calculateFeeBetweenTimes(2 ether, t2, t3, tenPercent) +
-      ComputeUtils._calculateFeeBetweenTimes(
-        0.5 ether,
-        t3,
-        endTime,
-        tenPercent
-      );
+      ComputeUtils._calculateFeeBetweenTimes(1 ether, t1, t2, feeRate) +
+      ComputeUtils._calculateFeeBetweenTimes(2 ether, t2, t3, feeRate) +
+      ComputeUtils._calculateFeeBetweenTimes(0.5 ether, t3, endTime, feeRate);
 
     assertEq(
       fee,
@@ -178,16 +168,11 @@ contract FeeCalculationTest is HarnessSetup, ISubscriptionKeysErrors {
         0,
         t0,
         t1,
-        tenPercent
+        feeRate
       ) +
-        ComputeUtils._calculateFeeBetweenTimes(1 ether, t1, t2, tenPercent) +
-        ComputeUtils._calculateFeeBetweenTimes(2 ether, t2, t3, tenPercent) +
-        ComputeUtils._calculateFeeBetweenTimes(
-          0.5 ether,
-          t3,
-          endTime,
-          tenPercent
-        );
+        ComputeUtils._calculateFeeBetweenTimes(1 ether, t1, t2, feeRate) +
+        ComputeUtils._calculateFeeBetweenTimes(2 ether, t2, t3, feeRate) +
+        ComputeUtils._calculateFeeBetweenTimes(0.5 ether, t3, endTime, feeRate);
 
       expected += expectedSingle * 2;
       endTimeFinal = endTime;
@@ -204,15 +189,15 @@ contract FeeCalculationTest is HarnessSetup, ISubscriptionKeysErrors {
         0,
         t0 + 1 days,
         t11,
-        tenPercent
+        feeRate
       ) +
-        ComputeUtils._calculateFeeBetweenTimes(1 ether, t11, t22, tenPercent) +
-        ComputeUtils._calculateFeeBetweenTimes(2 ether, t22, t33, tenPercent) +
+        ComputeUtils._calculateFeeBetweenTimes(1 ether, t11, t22, feeRate) +
+        ComputeUtils._calculateFeeBetweenTimes(2 ether, t22, t33, feeRate) +
         ComputeUtils._calculateFeeBetweenTimes(
           0.5 ether,
           t33,
           endTimeFinal,
-          tenPercent
+          feeRate
         );
 
       expected += expectedSecond;
@@ -238,7 +223,9 @@ contract FeeCalculationTest is HarnessSetup, ISubscriptionKeysErrors {
 
     vm.startPrank(owner);
     uint256 t0 = block.timestamp;
+
     _createPriceChanges(t0, owner);
+
     _createPriceChanges(t0, addr1);
     // Create a third set of price changes that start at t0 + 1 day
     (, , , , uint256 endTime) = _createPriceChanges(t0 + 1 days, addr2);
