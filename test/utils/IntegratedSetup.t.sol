@@ -22,15 +22,17 @@ abstract contract IntegratedSetup is Test {
     subKey = new SubscriptionKeys();
 
     subKey.setProtocolFeePercent(50000000000000000);
+    subKey.setSubscriptionRate(tenPercent);
+    subKey.setLiquidationPenalty(150000000000000000);
     subKey.setProtocolFeeDestination(destination);
 
-    subKey.initializeKeySubject(tenPercent);
+    subKey.initializeKeySubject();
     vm.stopPrank();
 
     vm.prank(addr1);
-    subKey.initializeKeySubject(tenPercent);
+    subKey.initializeKeySubject();
 
     vm.prank(addr2);
-    subKey.initializeKeySubject(tenPercent);
+    subKey.initializeKeySubject();
   }
 }

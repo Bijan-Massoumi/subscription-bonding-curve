@@ -91,16 +91,17 @@ abstract contract HarnessSetup is Test {
     vm.startPrank(owner);
     harness = new KeyHarness();
     harness.setProtocolFeePercent(50000000000000000);
+    harness.setSubscriptionRate(feeRate);
     harness.setProtocolFeeDestination(destination);
     harness.setLiquidationPenalty(150000000000000000);
 
-    harness.initializeKeySubject(feeRate);
+    harness.initializeKeySubject();
     vm.stopPrank();
 
     vm.prank(addr1);
-    harness.initializeKeySubject(feeRate);
+    harness.initializeKeySubject();
 
     vm.prank(addr2);
-    harness.initializeKeySubject(feeRate);
+    harness.initializeKeySubject();
   }
 }

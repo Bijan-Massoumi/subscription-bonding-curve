@@ -42,10 +42,13 @@ contract SubscriptionKeys is
     address trader,
     address subject,
     bool isBuy,
-    uint256 shareAmount,
+    uint256 keyAmount,
     uint256 ethAmount,
     uint256 supply
   );
+  event NewInitializedKeySubject(address keySubject);
+  event Liquidation(address liquidator, address liquidatedSub, uint256 amount);
+  event BondAdjusted(address keySubject, uint256 newSupply);
 
   // TODO replace _balances with EnumerableMap implementation
   mapping(address trader => mapping(address keySubject => uint256))
@@ -53,22 +56,20 @@ contract SubscriptionKeys is
   mapping(address keySubject => uint256) public keySupply;
   mapping(address keySubject => bool) private initializedKeySubjects;
 
-  // TODO make subscriptinoRate changes work
   mapping(address keySubject => Common.PriceChange[])
     internal historicalPriceChanges;
   mapping(address keySubject => bytes32[]) private historicalPriceHashes;
-
   mapping(address keySubject => RunningTotal) internal runningTotals;
-
   mapping(address keySubject => uint256) internal periodLastOccuredAt;
-
   mapping(address keySubject => mapping(address trader => PriceInteractionRecord))
     internal traderInfos;
 
   uint256 protocolFeePercent;
   address protocolFeeDestination;
   uint256 liquidationPenalty;
+  uint256 subscriptionRate;
 
+  // 12 HOURS
   uint256 period = 43_200;
 
   // 100% fee rate
@@ -100,8 +101,16 @@ contract SubscriptionKeys is
     return liquidationPenalty;
   }
 
+  function setSubscriptionRate(uint256 _subscriptionRate) public onlyOwner {
+    subscriptionRate = _subscriptionRate;
+  }
+
+  function getSubscriptionRate() public view returns (uint256) {
+    return subscriptionRate;
+  }
+
   // TODO add signature
-  function initializeKeySubject(uint256 _subscriptionRate) public {
+  function initializeKeySubject() public {
     address _keySubject = msg.sender;
     require(
       !initializedKeySubjects[_keySubject],
@@ -120,7 +129,7 @@ contract SubscriptionKeys is
     // first period has no interest rate on buys
     Common.PriceChange memory newPriceChange = Common.PriceChange({
       price: 0,
-      rate: uint128(_subscriptionRate),
+      rate: uint128(subscriptionRate),
       startTimestamp: uint112(block.timestamp),
       index: 0
     });
@@ -130,6 +139,7 @@ contract SubscriptionKeys is
     historicalPriceHashes[_keySubject].push(h);
 
     periodLastOccuredAt[_keySubject] = block.timestamp;
+    emit NewInitializedKeySubject(_keySubject);
   }
 
   // Bonding Curve methods ------------------------
@@ -209,33 +219,47 @@ contract SubscriptionKeys is
     return getPrice(keySupply[keySubject], 1);
   }
 
-  // TODO is there a way to liquidate people before we buy to ensure the best price?
   function buyKeys(
     address keySubject,
     uint256 amount,
     Proof[] calldata proofs
   ) public payable {
+    require(
+      initializedKeySubjects[keySubject],
+      "KeySubject must be initialized"
+    );
+
     require(amount > 0, "Cannot buy 0 keys");
     uint256 price = getPrice(keySupply[keySubject], amount);
     uint256 protocolFee = getProtocalFee(price);
     require(msg.value >= price + protocolFee, "Inusfficient payment");
-    address trader = msg.sender;
 
-    uint256 newDeposit = collectFees(trader, proofs);
-    newDeposit += (msg.value - price - protocolFee);
+    uint256 newDeposit = collectFees(msg.sender, proofs) +
+      (msg.value - price - protocolFee);
 
     // if we didnt already verify a proof for this subject, we need to update the trader info
-    bool exists = traderOwnsKeySubject(trader, keySubject);
-    if (!exists) _updatePriceInteractionRecord(keySubject, trader);
-    uint256 req = getPoolRequirementForBuy(trader, keySubject, amount);
-    require(req <= newDeposit, "Insufficient pool");
-    _updateTraderPool(trader, newDeposit);
+    if (!traderOwnsKeySubject(msg.sender, keySubject))
+      _updatePriceInteractionRecord(keySubject, msg.sender);
+
+    require(
+      getPoolRequirementForBuy(msg.sender, keySubject, amount) <= newDeposit,
+      "Insufficient pool"
+    );
+    _updateTraderPool(msg.sender, newDeposit);
 
     // adjust supply
-    uint256 newBal = _balances[trader][keySubject] + amount;
-    _balances[trader][keySubject] = newBal;
+    uint256 newBal = _balances[msg.sender][keySubject] + amount;
+    _balances[msg.sender][keySubject] = newBal;
     keySupply[keySubject] += amount;
-    _updateOwnedSubjectSet(newBal, trader, keySubject);
+    emit Trade(
+      msg.sender,
+      keySubject,
+      true,
+      amount,
+      price,
+      keySupply[keySubject]
+    );
+    _updateOwnedSubjectSet(newBal, msg.sender, keySubject);
     _updatePriceOracle(keySubject, getCurrentPrice(keySubject));
 
     (bool success, ) = protocolFeeDestination.call{value: protocolFee}("");
@@ -247,6 +271,10 @@ contract SubscriptionKeys is
     uint256 amount,
     Proof[] calldata proofs
   ) public {
+    require(
+      initializedKeySubjects[keySubject],
+      "KeySubject must be initialized"
+    );
     // TODO reconsider conditions
     uint256 supply = keySupply[keySubject];
     require(supply > amount, "Cannot sell the last key");
@@ -309,7 +337,6 @@ contract SubscriptionKeys is
         uint256 feeProportion = (breakdown[i].fees * lastSubPool * 1 ether) /
           totalScaledFees;
         address keySub = breakdown[i].keySubject;
-        console.log("feeProportion", feeProportion);
         (bool sent, ) = keySub.call{value: feeProportion}("");
         require(sent, "Pro-rata fee transfer failed");
 
@@ -465,9 +492,7 @@ contract SubscriptionKeys is
   ) internal {
     Common.PriceChange memory newHistoricalPriceChange = Common.PriceChange({
       price: averagePrice,
-      rate: historicalPriceChanges[keySubject][
-        historicalPriceChanges[keySubject].length - 1
-      ].rate,
+      rate: uint128(subscriptionRate),
       startTimestamp: uint112(currentTime),
       index: uint16(historicalPriceChanges[keySubject].length)
     });

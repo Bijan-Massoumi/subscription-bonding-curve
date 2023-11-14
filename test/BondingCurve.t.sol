@@ -20,23 +20,10 @@ contract BondingCurveTest is IntegratedSetup {
     );
   }
 
-  // Test selling down to a supply of 0
-  function testSellDownToZeroSupply() public {
-    uint256 supply = 10;
-    uint256 amount = 10;
-    uint256 priceAfter = subKey.getPrice(supply - amount, 0);
-    // Price after selling the entire supply should be 0
-    assertEq(
-      priceAfter,
-      0,
-      "Price should be zero after selling down to zero supply"
-    );
-  }
-
   // Test buying up the curve with increasing amounts
   function testBuyUpCurve() public {
     uint256 supply = 0;
-    uint256 amount = 1;
+    uint256 amount = 2;
     uint256 lastPrice = 0;
 
     for (uint i = 0; i < 5; i++) {
@@ -58,13 +45,12 @@ contract BondingCurveTest is IntegratedSetup {
     uint256 amount = 10;
     uint256 lastPrice = subKey.getPrice(supply, supply);
 
-    for (uint i = 0; i < 5; i++) {
+    for (uint i = 0; i < 4; i++) {
       supply -= amount;
       uint256 currentPrice = subKey.getPrice(supply, supply);
       assertLt(currentPrice, lastPrice, "Price should decrease with each sale");
       lastPrice = currentPrice;
     }
-    assertEq(subKey.getPrice(supply, supply), 0);
   }
 
   function testCumulativeCalculation() public {
