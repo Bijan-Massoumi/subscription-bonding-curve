@@ -25,10 +25,10 @@ struct PriceInteractionRecord {
 }
 
 struct RunningTotal {
-  uint256 weightedSum; // Sum of products: price * time
-  uint256 totalDuration; // Total duration that contributed to the sum
-  uint256 lastUpdateTime; // Last time the price was updated
-  uint256 lastPrice; // The last price that was set
+  uint256 weightedSum;
+  uint256 totalDuration;
+  uint256 lastUpdateTime;
+  uint256 lastPrice;
 }
 
 // TODO add method that liquidates all users, it should give a gas refund, it should revert if there are no users to liquidate
@@ -48,7 +48,8 @@ contract SubscriptionKeys is
   );
   event NewInitializedKeySubject(address keySubject);
   event Liquidation(address liquidator, address liquidatedSub, uint256 amount);
-  event BondAdjusted(address keySubject, uint256 newSupply);
+  event FeesCollected(address trader, address keySubject, uint256 amount);
+  event PriceOracleUpdated(address keySubject, uint256 newPrice);
 
   // TODO replace _balances with EnumerableMap implementation
   mapping(address trader => mapping(address keySubject => uint256))
@@ -275,27 +276,33 @@ contract SubscriptionKeys is
       initializedKeySubjects[keySubject],
       "KeySubject must be initialized"
     );
+
     // TODO reconsider conditions
     uint256 supply = keySupply[keySubject];
     require(supply > amount, "Cannot sell the last key");
     require(amount > 0, "Cannot sell 0 keys");
 
     uint256 price = getPrice(supply - amount, amount);
-    uint256 protocolFee = getProtocalFee(price);
-    address trader = msg.sender;
-    uint256 currBalance = _balances[trader][keySubject];
+    uint256 currBalance = _balances[msg.sender][keySubject];
     require(currBalance >= amount, "Insufficient keys");
 
-    uint256 newDeposit = collectFees(trader, proofs);
-    _updateTraderPool(trader, newDeposit);
-
+    _updateTraderPool(msg.sender, collectFees(msg.sender, proofs));
     // update checkpoints
     uint256 newBal = currBalance - amount;
     _balances[msg.sender][keySubject] = newBal;
     keySupply[keySubject] -= amount;
-    _updateOwnedSubjectSet(newBal, trader, keySubject);
+    emit Trade(
+      msg.sender,
+      keySubject,
+      false,
+      amount,
+      price,
+      keySupply[keySubject]
+    );
+    _updateOwnedSubjectSet(newBal, msg.sender, keySubject);
     _updatePriceOracle(keySubject, getCurrentPrice(keySubject));
 
+    uint256 protocolFee = getProtocalFee(price);
     (bool success1, ) = msg.sender.call{value: price - protocolFee}("");
     (bool success2, ) = protocolFeeDestination.call{value: protocolFee}("");
     require(success1 && success2, "Unable to send funds");
@@ -327,6 +334,7 @@ contract SubscriptionKeys is
         (bool sent, ) = keySub.call{value: breakdown[i].fees}("");
         require(sent, "Fee transfer failed");
         lastSubPool -= breakdown[i].fees;
+        emit FeesCollected(trader, keySub, breakdown[i].fees);
 
         // Update the trader information with the new historical price index and interaction time
         _updatePriceInteractionRecord(keySub, trader);
@@ -339,6 +347,7 @@ contract SubscriptionKeys is
         address keySub = breakdown[i].keySubject;
         (bool sent, ) = keySub.call{value: feeProportion}("");
         require(sent, "Pro-rata fee transfer failed");
+        emit FeesCollected(trader, keySub, breakdown[i].fees);
 
         // Update the trader information with the new historical price index and interaction time
         _updatePriceInteractionRecord(keySub, trader);
@@ -506,6 +515,8 @@ contract SubscriptionKeys is
       abi.encode(newHistoricalPriceChange, previousHash)
     );
     historicalPriceHashes[keySubject].push(newHash);
+
+    emit PriceOracleUpdated(keySubject, averagePrice);
   }
 
   function _updatePriceInteractionRecord(

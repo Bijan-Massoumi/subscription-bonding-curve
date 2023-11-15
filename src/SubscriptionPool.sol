@@ -7,11 +7,7 @@ import "./Common.sol";
 import "@openzeppelin/contracts/utils/structs/EnumerableMap.sol";
 
 abstract contract SubscriptionPool is ISubscriptionPoolErrors {
-  // event FeeCollected(
-  //   uint256 feeCollected,
-  //   uint256 deposit,
-  //   uint256 liquidationStartedAt
-  // );
+  event PoolAdjusted(address keySubject, uint256 newPool);
 
   mapping(address trader => uint256 checkpoint)
     internal _subscriptionCheckpoints;
@@ -32,6 +28,6 @@ abstract contract SubscriptionPool is ISubscriptionPoolErrors {
 
   function _updateTraderPool(address trader, uint256 newSubPool) internal {
     _subscriptionCheckpoints[trader] = newSubPool;
-    //TODO emit log with timestamp
+    emit PoolAdjusted(trader, newSubPool);
   }
 }
