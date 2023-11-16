@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import "./ISubscriptionPoolErrors.sol";
+import "./errors/ISubscriptionPoolErrors.sol";
 import "forge-std/console.sol";
 import "./Common.sol";
 import "@openzeppelin/contracts/utils/structs/EnumerableMap.sol";

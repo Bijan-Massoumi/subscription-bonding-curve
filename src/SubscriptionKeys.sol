@@ -200,6 +200,16 @@ contract SubscriptionKeys is
     return (price * protocolFeePercent) / 1 ether;
   }
 
+  // TODO add test suite for bond requirment
+  function getBondRequirement(
+    uint256 supply,
+    uint256 bal
+  ) public view returns (uint256) {
+    uint256 price = getPrice(supply, 1);
+    uint256 requirement = (price * bal * minimumPoolRatio) / 1 ether;
+    return requirement;
+  }
+
   function getLiquidationPayment(uint256 price) public view returns (uint256) {
     uint256 liquidationAmount = ((price) * liquidationPenalty) / 1 ether;
     return liquidationAmount;
@@ -242,10 +252,9 @@ contract SubscriptionKeys is
     if (!traderOwnsKeySubject(msg.sender, keySubject))
       _updatePriceInteractionRecord(keySubject, msg.sender);
 
-    require(
-      getPoolRequirementForBuy(msg.sender, keySubject, amount) <= newDeposit,
-      "Insufficient pool"
-    );
+    if (getPoolRequirementForBuy(msg.sender, keySubject, amount) > newDeposit)
+      revert InsufficientSubscriptionPool();
+
     _updateTraderPool(msg.sender, newDeposit);
 
     // adjust supply
@@ -279,7 +288,6 @@ contract SubscriptionKeys is
 
     // TODO reconsider conditions
     uint256 supply = keySupply[keySubject];
-    require(supply > amount, "Cannot sell the last key");
     require(amount > 0, "Cannot sell 0 keys");
 
     uint256 price = getPrice(supply - amount, amount);
@@ -623,12 +631,10 @@ contract SubscriptionKeys is
       buySubject
     );
 
-    // For the calling subject, calculate the requirement after the buy
-    uint256 newPrice = getBuyPrice(buySubject, amount);
-    uint256 newBalance = balanceOf(buySubject, trader) + amount;
-    uint256 additionalRequirement = (newPrice * newBalance * minimumPoolRatio) /
-      1 ether;
-
+    uint256 additionalRequirement = getBondRequirement(
+      keySupply[buySubject] + amount,
+      balanceOf(buySubject, trader) + amount
+    );
     // Add the additional requirement to the total requirement
     totalRequirement += additionalRequirement;
 
@@ -649,9 +655,7 @@ contract SubscriptionKeys is
         continue;
       }
 
-      uint256 price = getCurrentPrice(buySubject);
-      uint256 requirement = (price * balance * minimumPoolRatio) / 1 ether;
-
+      uint256 requirement = getBondRequirement(keySupply[keySubject], balance);
       totalRequirement += requirement;
     }
 
