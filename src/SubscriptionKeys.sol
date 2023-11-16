@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.19;
 
 import {SubscriptionPool} from "./SubscriptionPool.sol";
 import {ISubscriptionKeysErrors} from "./errors/ISubscriptionKeysErrors.sol";
@@ -137,7 +137,15 @@ contract SubscriptionKeys is
     // initialize genesis price change
     historicalPriceChanges[_keySubject].push(newPriceChange);
     bytes32 h = keccak256(abi.encode(newPriceChange, bytes32(0)));
+    console.log("loghash", msg.sender);
+    console.logBytes32(h);
     historicalPriceHashes[_keySubject].push(h);
+    console.log("reading back out");
+    console.logBytes32(
+      historicalPriceHashes[_keySubject][
+        historicalPriceHashes[_keySubject].length - 1
+      ]
+    );
 
     periodLastOccuredAt[_keySubject] = block.timestamp;
     emit NewInitializedKeySubject(_keySubject);
@@ -201,7 +209,7 @@ contract SubscriptionKeys is
   }
 
   // TODO add test suite for bond requirment
-  function getBondRequirement(
+  function calculateBondRequirement(
     uint256 supply,
     uint256 bal
   ) public view returns (uint256) {
@@ -230,6 +238,16 @@ contract SubscriptionKeys is
     return getPrice(keySupply[keySubject], 1);
   }
 
+  function test(address keySubject, address trader) public view {
+    console.log("test-keysubject", keySubject);
+    console.log("test-trader", trader);
+    console.log("F5 user", 0xF5886Bc3f1d3d6A6a44788f93eF7195fcDd6e38C);
+    bytes32[] memory his = historicalPriceHashes[
+      0xF5886Bc3f1d3d6A6a44788f93eF7195fcDd6e38C
+    ];
+    console.logBytes32(his[his.length - 1]);
+  }
+
   function buyKeys(
     address keySubject,
     uint256 amount,
@@ -239,6 +257,7 @@ contract SubscriptionKeys is
       initializedKeySubjects[keySubject],
       "KeySubject must be initialized"
     );
+    test(keySubject, msg.sender);
 
     require(amount > 0, "Cannot buy 0 keys");
     uint256 price = getPrice(keySupply[keySubject], amount);
@@ -403,15 +422,13 @@ contract SubscriptionKeys is
     address trader,
     Proof calldata proof
   ) internal view returns (uint256 _fee) {
-    bytes32 initialHash = getStartHash(subjectInfo.keySubject, trader);
-
     PriceInteractionRecord memory info = traderInfos[subjectInfo.keySubject][
       trader
     ];
     uint256 lastInteractionTime = uint256(info.lastInteractionTime);
     (uint256 fee, bytes32 h) = getFeeWithFinalHash(
       lastInteractionTime,
-      initialHash,
+      getStartHash(subjectInfo.keySubject, trader),
       proof,
       subjectInfo.balance
     );
@@ -435,6 +452,9 @@ contract SubscriptionKeys is
     for (uint256 i = 0; i <= endIndex; i++) {
       // Update the hash chain
       currentHash = keccak256(abi.encode(pastPrices[i], currentHash));
+      console.log("computed hash");
+      console.logBytes32(currentHash);
+
       uint256 nextTimestamp = i < endIndex
         ? pastPrices[i + 1].startTimestamp
         : block.timestamp;
@@ -462,11 +482,16 @@ contract SubscriptionKeys is
   }
 
   function verifyHash(bytes32 h, address keySubject) internal view {
-    bytes32[] storage his = historicalPriceHashes[keySubject];
+    bytes32[] memory his = historicalPriceHashes[keySubject];
 
     // Check if the hash is valid
     bool valid = his[his.length - 1] == h;
-    if (!valid) revert InvalidProof({subject: keySubject});
+    if (!valid)
+      revert InvalidProof({
+        subject: keySubject,
+        expectedProof: his[his.length - 1],
+        actualProof: h
+      });
   }
 
   function _updatePriceOracle(address keySubject, uint256 newPrice) internal {
@@ -548,10 +573,7 @@ contract SubscriptionKeys is
     }
 
     // get hash right before the traders price change. The prover will hash chain off of this
-    return
-      historicalPriceHashes[keySubject][
-        getLastTraderPriceIndex(keySubject, trader) - 1
-      ];
+    return historicalPriceHashes[keySubject][lastPriceIndex - 1];
   }
 
   function getLastTraderPriceIndex(
@@ -583,6 +605,7 @@ contract SubscriptionKeys is
       Common.PriceChange[] memory pc = new Common.PriceChange[](length);
       for (uint256 j = 0; j < length; j++) {
         pc[j] = historicalPriceChanges[ks][startIndex + j];
+        bytes32 h = keccak256(abi.encode(pc[j], bytes32(0)));
       }
       proofs[i] = Proof({keySubject: ks, pcs: pc});
     }
@@ -631,7 +654,7 @@ contract SubscriptionKeys is
       buySubject
     );
 
-    uint256 additionalRequirement = getBondRequirement(
+    uint256 additionalRequirement = calculateBondRequirement(
       keySupply[buySubject] + amount,
       balanceOf(buySubject, trader) + amount
     );
@@ -655,7 +678,10 @@ contract SubscriptionKeys is
         continue;
       }
 
-      uint256 requirement = getBondRequirement(keySupply[keySubject], balance);
+      uint256 requirement = calculateBondRequirement(
+        keySupply[keySubject],
+        balance
+      );
       totalRequirement += requirement;
     }
 

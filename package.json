@@ -11,9 +11,7 @@
     "test": "forge test -vv",
     "build": "forge compile --force",
     "startNode": "anvil -m 'test test test test test test test test test test test junk' --chain-id 1337 --timestamp 1685142584",
-    "deployLocal": "forge script script/deployLocal.s.sol --rpc-url http://127.0.0.1:8545 --broadcast --skip-simulation",
-    "deployLocalFactory": "forge script script/deployLocalFactory.s.sol --rpc-url http://127.0.0.1:8545 --broadcast --skip-simulation -vv",
-    "deployStageFactory": "forge script script/deployLocalFactory.s.sol --rpc-url https://goerli.base.org/ --broadcast --skip-simulation"
+    "deployStage": "forge script script/deployStage.s.sol --rpc-url $RPC --broadcast"
   },
   "author": "",
   "license": "ISC",

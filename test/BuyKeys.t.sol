@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.19;
 
 import "forge-std/Test.sol";
 import "./utils/IntegratedSetup.t.sol";
@@ -48,13 +48,11 @@ contract BuyKeysTest is IntegratedSetup, ISubscriptionPoolErrors {
     uint256 protocolFee = subKey.getProtocalFee(priceForKeys);
 
     // Calculate bond requirement
-    uint256 currentSupply = subKey.keySupply(owner);
-    uint256 currentBalance = subKey.balanceOf(owner, owner); // Assuming this is the initial balance
-    uint256 bondRequirement = subKey.getBondRequirement(
-      currentSupply + keysToBuy,
-      currentBalance + keysToBuy
+    uint256 bondRequirement = subKey.getPoolRequirementForBuy(
+      owner,
+      owner,
+      keysToBuy
     );
-
     // Total payment (1 wei less than required)
     uint256 insufficientPayment = priceForKeys +
       protocolFee +
@@ -73,9 +71,44 @@ contract BuyKeysTest is IntegratedSetup, ISubscriptionPoolErrors {
     uint256 sufficientPayment = priceForKeys + protocolFee + bondRequirement;
     vm.startPrank(owner);
     subKey.buyKeys{value: sufficientPayment}(owner, keysToBuy, proof);
-    assertEq(subKey.balanceOf(owner, owner), currentBalance + keysToBuy);
+    assertEq(subKey.balanceOf(owner, owner), keysToBuy);
 
-    // Additional assertions for bond amount can be added here
+    vm.stopPrank();
+  }
+
+  function testBondRequirementWithTwoSubjects() public {
+    vm.deal(owner, 100 ether);
+
+    uint256 keysToBuy = 5;
+    Proof[] memory proof;
+
+    uint256 priceForKeys = subKey.getPrice(0, keysToBuy);
+    uint256 protocolFee = subKey.getProtocalFee(priceForKeys);
+    uint256 bondRequirement = subKey.getPoolRequirementForBuy(
+      owner,
+      owner,
+      keysToBuy
+    );
+    uint256 payment = priceForKeys + protocolFee + bondRequirement;
+    vm.startPrank(owner);
+    subKey.buyKeys{value: payment}(owner, keysToBuy, proof);
+
+    // now buy from second key subject
+    proof = subKey.getPriceProof(owner);
+
+    uint256 additionalReq = subKey.getPoolRequirementForBuy(
+      owner,
+      addr1,
+      keysToBuy
+    ) - subKey.getSubscriptionPool(owner);
+    payment = priceForKeys + protocolFee + additionalReq - 1;
+    vm.expectRevert(
+      abi.encodeWithSelector(InsufficientSubscriptionPool.selector)
+    );
+    subKey.buyKeys{value: payment}(addr1, keysToBuy, proof);
+
+    payment = priceForKeys + protocolFee + additionalReq;
+    subKey.buyKeys{value: payment}(addr1, keysToBuy, proof);
 
     vm.stopPrank();
   }
