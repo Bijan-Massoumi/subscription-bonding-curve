@@ -58,36 +58,21 @@ contract DeployUpdated is Script {
 
     vm.startBroadcast(subcaster1);
     keyContract.initializeKeySubject();
-    payment = calculateTotalPayment(s1Addr, ownerAddr, 3);
-    keyContract.buyKeys{value: payment}(
-      ownerAddr,
-      3,
-      keyContract.getPriceProof(s1Addr)
-    );
-    vm.stopBroadcast();
-
-    vm.startBroadcast(subcaster1);
     payment = calculateTotalPayment(s1Addr, s1Addr, 3);
     keyContract.buyKeys{value: payment}(
       s1Addr,
       3,
-      keyContract.getPriceProof(s1Addr)
+      SubscriptionKeys(address(keyContract)).getPriceProof(s1Addr)
     );
     vm.stopBroadcast();
 
     vm.startBroadcast(subcaster2);
     keyContract.initializeKeySubject();
-    payment = calculateTotalPayment(s2Addr, s1Addr, 3);
-    keyContract.buyKeys{value: payment}(
-      s1Addr,
-      3,
-      keyContract.getPriceProof(s2Addr)
-    );
     payment = calculateTotalPayment(s2Addr, s2Addr, 3);
     keyContract.buyKeys{value: payment}(
       s2Addr,
       3,
-      keyContract.getPriceProof(s2Addr)
+      SubscriptionKeys(address(keyContract)).getPriceProof(s2Addr)
     );
     vm.stopBroadcast();
   }

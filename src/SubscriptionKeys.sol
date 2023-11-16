@@ -5,7 +5,7 @@ import {SubscriptionPool} from "./SubscriptionPool.sol";
 import {ISubscriptionKeysErrors} from "./errors/ISubscriptionKeysErrors.sol";
 import "./ComputeUtils.sol";
 import "./Common.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
+import "lib/openzeppelin-contracts/contracts/access/Ownable.sol";
 import {TraderKeyTracker} from "./TraderKeyTracker.sol";
 import "forge-std/console.sol";
 
@@ -76,7 +76,7 @@ contract SubscriptionKeys is
   // 100% fee rate
   uint256 internal maxSubscriptionRate = 10000;
 
-  constructor() Ownable(msg.sender) {}
+  constructor() Ownable() {}
 
   function setProtocolFeePercent(uint256 _feePercent) public onlyOwner {
     protocolFeePercent = _feePercent;
@@ -137,21 +137,13 @@ contract SubscriptionKeys is
     // initialize genesis price change
     historicalPriceChanges[_keySubject].push(newPriceChange);
     bytes32 h = keccak256(abi.encode(newPriceChange, bytes32(0)));
-    console.log("loghash", msg.sender);
-    console.logBytes32(h);
     historicalPriceHashes[_keySubject].push(h);
-    console.log("reading back out");
-    console.logBytes32(
-      historicalPriceHashes[_keySubject][
-        historicalPriceHashes[_keySubject].length - 1
-      ]
-    );
 
     periodLastOccuredAt[_keySubject] = block.timestamp;
     emit NewInitializedKeySubject(_keySubject);
   }
 
-  // Bonding Curve methods ------------------------
+  // Bonding Curve methods ------------------------ 00000000000000000000000000000000000000000000000000000000655629f8
   function getPrice(
     uint256 _supply,
     uint256 amount
@@ -238,16 +230,6 @@ contract SubscriptionKeys is
     return getPrice(keySupply[keySubject], 1);
   }
 
-  function test(address keySubject, address trader) public view {
-    console.log("test-keysubject", keySubject);
-    console.log("test-trader", trader);
-    console.log("F5 user", 0xF5886Bc3f1d3d6A6a44788f93eF7195fcDd6e38C);
-    bytes32[] memory his = historicalPriceHashes[
-      0xF5886Bc3f1d3d6A6a44788f93eF7195fcDd6e38C
-    ];
-    console.logBytes32(his[his.length - 1]);
-  }
-
   function buyKeys(
     address keySubject,
     uint256 amount,
@@ -257,7 +239,6 @@ contract SubscriptionKeys is
       initializedKeySubjects[keySubject],
       "KeySubject must be initialized"
     );
-    test(keySubject, msg.sender);
 
     require(amount > 0, "Cannot buy 0 keys");
     uint256 price = getPrice(keySupply[keySubject], amount);
@@ -452,8 +433,6 @@ contract SubscriptionKeys is
     for (uint256 i = 0; i <= endIndex; i++) {
       // Update the hash chain
       currentHash = keccak256(abi.encode(pastPrices[i], currentHash));
-      console.log("computed hash");
-      console.logBytes32(currentHash);
 
       uint256 nextTimestamp = i < endIndex
         ? pastPrices[i + 1].startTimestamp
@@ -605,7 +584,6 @@ contract SubscriptionKeys is
       Common.PriceChange[] memory pc = new Common.PriceChange[](length);
       for (uint256 j = 0; j < length; j++) {
         pc[j] = historicalPriceChanges[ks][startIndex + j];
-        bytes32 h = keccak256(abi.encode(pc[j], bytes32(0)));
       }
       proofs[i] = Proof({keySubject: ks, pcs: pc});
     }

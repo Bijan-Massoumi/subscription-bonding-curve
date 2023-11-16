@@ -4,7 +4,7 @@ pragma solidity ^0.8.19;
 import "./errors/ISubscriptionPoolErrors.sol";
 import "forge-std/console.sol";
 import "./Common.sol";
-import "@openzeppelin/contracts/utils/structs/EnumerableMap.sol";
+import "lib/openzeppelin-contracts/contracts/utils/structs/EnumerableMap.sol";
 
 abstract contract SubscriptionPool is ISubscriptionPoolErrors {
   event PoolAdjusted(address keySubject, uint256 newPool);

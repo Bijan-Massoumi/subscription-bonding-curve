@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
-import "@openzeppelin/contracts/utils/structs/EnumerableMap.sol";
+import "lib/openzeppelin-contracts/contracts/utils/structs/EnumerableMap.sol";
 import "./Common.sol";
 import "forge-std/console.sol";
 
