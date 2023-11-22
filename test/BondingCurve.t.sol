@@ -61,8 +61,8 @@ contract BondingCurveTest is IntegratedSetup {
 
     uint256 priceForFirst = subKey.getPrice(0, 1);
     uint256 priceForNextTwo = subKey.getPrice(1, 2);
-    uint256 priceForNextTen = subKey.getPrice(3, 10); // Starts at 3 because 0->1 and then 1->3
-    uint256 cumulativePriceForThirteen = subKey.getPrice(0, 13); // Total price for 13 tokens
+    uint256 priceForNextTen = subKey.getPrice(3, 10);
+    uint256 cumulativePriceForThirteen = subKey.getPrice(0, 13);
 
     assertEq(
       priceForFirst + priceForNextTwo + priceForNextTen,

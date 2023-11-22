@@ -36,7 +36,6 @@ contract DeployUpdated is Script {
     address destination = vm.envAddress("OWNER_PUBLIC_KEY");
 
     uint256 ownerpk = vm.envUint("GOERLI_PRIVATE_KEY");
-    address ownerAddr = vm.addr(ownerpk);
 
     uint256 subcaster1 = vm.envUint("TEST_ACCOUNT_1_PRIVATE_KEY");
     address s1Addr = vm.addr(subcaster1);

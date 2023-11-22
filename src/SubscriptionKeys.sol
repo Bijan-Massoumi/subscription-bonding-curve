@@ -44,12 +44,18 @@ contract SubscriptionKeys is
     bool isBuy,
     uint256 keyAmount,
     uint256 ethAmount,
+    uint256 newPrice,
     uint256 supply
   );
   event NewInitializedKeySubject(address keySubject);
   event Liquidation(address liquidator, address liquidatedSub, uint256 amount);
   event FeesCollected(address trader, address keySubject, uint256 amount);
-  event PriceOracleUpdated(address keySubject, uint256 newPrice);
+  event PriceOracleUpdated(
+    address keySubject,
+    uint256 newPrice,
+    uint256 newRate,
+    bytes32 headHash
+  );
 
   // TODO replace _balances with EnumerableMap implementation
   mapping(address trader => mapping(address keySubject => uint256))
@@ -258,20 +264,32 @@ contract SubscriptionKeys is
     _updateTraderPool(msg.sender, newDeposit);
 
     // adjust supply
+    _buyKeys(amount, keySubject, price);
+  }
+
+  function _buyKeys(
+    uint256 amount,
+    address keySubject,
+    uint256 price
+  ) internal {
+    // adjust supply
     uint256 newBal = _balances[msg.sender][keySubject] + amount;
     _balances[msg.sender][keySubject] = newBal;
     keySupply[keySubject] += amount;
+    uint256 newPrice = getCurrentPrice(keySubject);
     emit Trade(
       msg.sender,
       keySubject,
       true,
       amount,
       price,
+      newPrice,
       keySupply[keySubject]
     );
     _updateOwnedSubjectSet(newBal, msg.sender, keySubject);
-    _updatePriceOracle(keySubject, getCurrentPrice(keySubject));
+    _updatePriceOracle(keySubject, newPrice);
 
+    uint256 protocolFee = getProtocalFee(price);
     (bool success, ) = protocolFeeDestination.call{value: protocolFee}("");
     if (!success) revert ProtocolFeeTransferFailed();
   }
@@ -290,25 +308,33 @@ contract SubscriptionKeys is
     uint256 supply = keySupply[keySubject];
     require(amount > 0, "Cannot sell 0 keys");
 
-    uint256 price = getPrice(supply - amount, amount);
     uint256 currBalance = _balances[msg.sender][keySubject];
     require(currBalance >= amount, "Insufficient keys");
 
     _updateTraderPool(msg.sender, collectFees(msg.sender, proofs));
-    // update checkpoints
-    uint256 newBal = currBalance - amount;
+    _sellKeys(amount, keySubject, getPrice(supply - amount, amount));
+  }
+
+  function _sellKeys(
+    uint256 amount,
+    address keySubject,
+    uint256 price
+  ) internal {
+    uint256 newBal = _balances[msg.sender][keySubject] - amount;
     _balances[msg.sender][keySubject] = newBal;
     keySupply[keySubject] -= amount;
+    uint256 newPrice = getCurrentPrice(keySubject);
     emit Trade(
       msg.sender,
       keySubject,
       false,
       amount,
       price,
+      newPrice,
       keySupply[keySubject]
     );
     _updateOwnedSubjectSet(newBal, msg.sender, keySubject);
-    _updatePriceOracle(keySubject, getCurrentPrice(keySubject));
+    _updatePriceOracle(keySubject, newPrice);
 
     uint256 protocolFee = getProtocalFee(price);
     (bool success1, ) = msg.sender.call{value: price - protocolFee}("");
@@ -528,7 +554,12 @@ contract SubscriptionKeys is
     );
     historicalPriceHashes[keySubject].push(newHash);
 
-    emit PriceOracleUpdated(keySubject, averagePrice);
+    emit PriceOracleUpdated(
+      keySubject,
+      averagePrice,
+      uint128(subscriptionRate),
+      newHash
+    );
   }
 
   function _updatePriceInteractionRecord(
@@ -700,5 +731,6 @@ contract SubscriptionKeys is
       value: price - protocolFee - liquidatorPayment
     }("");
     require(success1 && success2 && success3, "Unable to send funds");
+    emit Liquidation(msg.sender, subscriber, liquidatorPayment);
   }
 }
